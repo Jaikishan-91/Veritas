@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     max_pages: int = 20
     render_dpi: int = 150
-    workers: int = 2
+    workers: int = 1  # PyMuPDF is not thread-safe; scale with processes/replicas (ADR-002)
+    max_image_pixels: int = 60_000_000
+    max_render_side: int = 4000
 
     # Fusion / routing
     band_medium: float = 0.3

@@ -27,7 +27,8 @@ class AnalysisResult:
 
 def analyze(data: bytes, settings: Settings | None = None, detectors: list[Detector] | None = None) -> AnalysisResult:
     s = settings or get_settings()
-    ctx = ingest.load(data, max_pages=s.max_pages, dpi=s.render_dpi)
+    ctx = ingest.load(data, max_pages=s.max_pages, dpi=s.render_dpi, max_pixels=s.max_image_pixels,
+                      max_side=s.max_render_side)
     findings: list[Finding] = []
     artifacts: list[Artifact] = []
     runs = []

@@ -1,13 +1,15 @@
 # Roadmap
 Current (MVP):
-- [ ] Backend analysis core (detectors + fusion) with tests
-- [ ] API, storage, DB, review queue
-- [ ] Frontend (upload, viewer w/ overlays, review queue)
-- [ ] Docker Compose (postgres, minio, backend, frontend)
+- [x] Backend analysis core (detectors + fusion) with tests
+- [x] API, storage, DB, review queue
+- [x] Frontend (upload, viewer w/ overlays, review queue)
+- [x] Docker Compose (postgres, minio, backend, frontend)
+- [ ] Verify PaddleOCR in the `WITH_OCR=1` image (adapter written, not yet run against the real library)
+- [ ] Authentication for API/reviewers
 
 Next:
-- Alembic migrations; auth/RBAC for reviewers; external job queue (RQ/Celery)
-- Calibration on labelled data (e.g. CASIA, Columbia, DocTamper, synthetic PDF edits)
+- Alembic migrations; RBAC for reviewers; audit log; external job queue (RQ/Celery) / process-based workers
+- Calibration on labelled data (e.g. CASIA, Columbia, DocTamper, synthetic PDF edits); per-detector thresholds from ROC
 
 Later:
 - Office formats (python-docx, openpyxl): docProps, revision history, font runs

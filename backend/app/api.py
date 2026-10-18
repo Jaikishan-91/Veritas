@@ -141,7 +141,8 @@ def get_document(doc_id: str, db: Session = Depends(get_db)):
 def get_file(doc_id: str, db: Session = Depends(get_db)):
     d = _get(db, doc_id)
     return Response(get_store().get(d.storage_key), media_type=d.mime,
-                    headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"})
+                    headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
+                             "Content-Security-Policy": "sandbox"})
 
 
 @router.get("/documents/{doc_id}/artifacts/{artifact_id}")

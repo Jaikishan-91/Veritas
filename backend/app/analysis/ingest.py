@@ -27,14 +27,15 @@ def sniff(data: bytes) -> Kind:
     raise IngestError("Unsupported file type (expected PDF, PNG or JPEG)")
 
 
-def load(data: bytes, max_pages: int = 20, dpi: int = 150) -> DocumentContext:
+def load(data: bytes, max_pages: int = 20, dpi: int = 150, max_pixels: int = 60_000_000,
+         max_side: int = 4000) -> DocumentContext:
     kind = sniff(data)
     if kind == "pdf":
-        return _load_pdf(data, max_pages, dpi)
-    return _load_image(data, kind)
+        return _load_pdf(data, max_pages, dpi, max_side)
+    return _load_image(data, kind, max_pixels)
 
 
-def _load_pdf(data: bytes, max_pages: int, dpi: int) -> DocumentContext:
+def _load_pdf(data: bytes, max_pages: int, dpi: int, max_side: int) -> DocumentContext:
     try:
         doc = pymupdf.open(stream=data, filetype="pdf")
     except Exception as e:  # noqa: BLE001 - PyMuPDF raises various types
@@ -46,17 +47,23 @@ def _load_pdf(data: bytes, max_pages: int, dpi: int) -> DocumentContext:
     pages, sizes = [], []
     for i in range(min(doc.page_count, max_pages)):
         page = doc[i]
-        pix = page.get_pixmap(dpi=dpi, alpha=False, colorspace=pymupdf.csRGB)
+        # cap raster size for oversized pages (memory / decompression-bomb guard)
+        page_dpi = min(dpi, max_side * 72 / max(page.rect.width, page.rect.height, 1))
+        pix = page.get_pixmap(dpi=max(int(page_dpi), 1), alpha=False, colorspace=pymupdf.csRGB)
         arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)[:, :, :3].copy()
         pages.append(arr)
         sizes.append((page.rect.width, page.rect.height))
     return DocumentContext(data=data, kind="pdf", pages=pages, page_sizes=sizes, pdf=doc, total_pages=doc.page_count)
 
 
-def _load_image(data: bytes, kind: Kind) -> DocumentContext:
+def _load_image(data: bytes, kind: Kind, max_pixels: int) -> DocumentContext:
     try:
         img = Image.open(io.BytesIO(data))
+        if img.width * img.height > max_pixels:
+            raise IngestError(f"Image too large ({img.width}x{img.height} px)")
         img.load()
+    except IngestError:
+        raise
     except Exception as e:  # noqa: BLE001
         raise IngestError(f"Unreadable image: {e}") from e
     rgb = np.array(img.convert("RGB"))

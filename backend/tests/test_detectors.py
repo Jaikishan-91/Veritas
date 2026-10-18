@@ -107,3 +107,17 @@ def test_clean_rasters_score_low():
     for data in (to_bytes(jpeg_roundtrip(texture(seed=5), 80), "JPEG", quality=80), to_bytes(texture(seed=6), "PNG")):
         r = analyze(data)
         assert r.fusion.score < 0.3, [(f.detector, f.description) for f in r.findings]
+
+
+def test_image_pixel_limit():
+    from conftest import texture, to_bytes
+    with pytest.raises(ingest.IngestError, match="too large"):
+        ingest.load(to_bytes(texture(), "PNG"), max_pixels=1000)
+
+
+def test_pdf_render_capped():
+    import pymupdf
+    doc = pymupdf.open()
+    doc.new_page(width=14400, height=14400)  # 200in square page
+    ctx = ingest.load(doc.tobytes(), max_side=2000)
+    assert max(ctx.pages[0].shape[:2]) <= 2000
