@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     review_high: float = 0.7
     min_coverage: float = 0.75
 
+    # Auth
+    session_hours: int = 12
+    cookie_secure: bool = False  # set true behind HTTPS
+    bootstrap_admin_email: str = ""  # created on startup if no users exist
+    bootstrap_admin_password: str = ""
+
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 
 

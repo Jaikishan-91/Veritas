@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useAuth } from "../auth";
 import { api, type DocumentDetail, type Finding } from "../api";
 import { CAT_COLOR, PageView, usePdf } from "../components/PageView";
 import { RiskBadge } from "../components/RiskBadge";
@@ -16,6 +17,8 @@ export default function DocumentPage() {
   const [heatOpacity, setHeatOpacity] = useState(0.6);
   const viewerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(700);
+  const { user } = useAuth();
+  const canReview = user?.role === "reviewer" || user?.role === "admin";
 
   useEffect(() => {
     let timer: number | undefined;
@@ -81,7 +84,7 @@ export default function DocumentPage() {
 
       <aside className="space-y-4">
         <Summary doc={doc} />
-        {doc.needs_review && <ReviewForm doc={doc} onDone={setDoc} />}
+        {doc.needs_review && canReview && <ReviewForm doc={doc} onDone={setDoc} />}
         <section>
           <h2 className="font-semibold mb-2">Evidence ({doc.findings.length})</h2>
           {doc.status === "completed" && doc.findings.length === 0 && (
@@ -169,7 +172,6 @@ function Summary({ doc }: { doc: DocumentDetail }) {
 function ReviewForm({ doc, onDone }: { doc: DocumentDetail; onDone: (d: DocumentDetail) => void }) {
   const [decision, setDecision] = useState("inconclusive");
   const [notes, setNotes] = useState("");
-  const [reviewer, setReviewer] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const last = doc.reviews.at(-1);
@@ -178,7 +180,7 @@ function ReviewForm({ doc, onDone }: { doc: DocumentDetail; onDone: (d: Document
     setBusy(true);
     setErr(null);
     try {
-      await api.review(doc.id, { decision, notes, reviewer });
+      await api.review(doc.id, { decision, notes });
       onDone(await api.get(doc.id));
       setNotes("");
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
@@ -194,7 +196,6 @@ function ReviewForm({ doc, onDone }: { doc: DocumentDetail; onDone: (d: Document
           </label>
         ))}
       </div>
-      <input className="w-full rounded border px-2 py-1" placeholder="Reviewer" value={reviewer} onChange={(e) => setReviewer(e.target.value)} maxLength={128} />
       <textarea className="w-full rounded border px-2 py-1" rows={3} placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} />
       {err && <p className="text-rose-700 text-xs">{err}</p>}
       <button disabled={busy} className="rounded bg-slate-900 px-3 py-1.5 text-white disabled:opacity-50">Submit review</button>

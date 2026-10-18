@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-18 — Authentication
+Added: cookie-session auth, analyst/reviewer/admin roles, per-owner document isolation, admin user management API and UI, login page, login throttling, CSRF header check, bootstrap admin from env.
+Changed: review `reviewer` comes from the session (request field removed). `documents.owner_id` added, so existing databases need a reset.
+Verified: `pytest` 29 passed (8 new auth tests: unauthenticated 401, lockout 429, cookie flags, logout revocation, CSRF 403, analyst isolation 404, role 403s, user management with session revocation). `npm run build` OK. Docker end-to-end via nginx: anonymous 401, admin creates analyst, analyst uploads and views own document (score 0.685), analyst gets 403 on reviews and on upload without the CSRF header, admin sees the document, logout then 401, cookie is HttpOnly on /api.
+Not verified: login and users pages in a real browser.
+
 ## 2026-10-18 — MVP
 Added:
 - Backend: ingest (magic-byte sniffing, PDF render, image load) and 8 detectors (pdf_metadata, pdf_structure, font_consistency, image_metadata, ela, noise, copy_move, ocr_text [optional]). Also noisy-OR fusion with band and review routing.

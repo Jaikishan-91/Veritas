@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from . import worker
 from .analysis.ingest import MIME, IngestError, sniff
+from .auth import can_see_all, current_user, require
 from .config import get_settings
-from .db import ArtifactRow, Document, Review, get_db
+from .db import ArtifactRow, Document, Review, User, get_db
 from .storage import get_store
 
 router = APIRouter(prefix="/api")
@@ -41,11 +42,11 @@ class ArtifactOut(BaseModel):
 class ReviewIn(BaseModel):
     decision: Literal["authentic", "tampered", "inconclusive"]
     notes: str = Field("", max_length=5000)
-    reviewer: str = Field("", max_length=128)
 
 
 class ReviewOut(ReviewIn):
     id: int
+    reviewer: str  # email of the authenticated reviewer
     created_at: datetime
 
 
@@ -81,10 +82,10 @@ def _summary(d: Document) -> dict:
                 risk_band=d.risk_band, needs_review=d.needs_review, reviewed=bool(d.reviews), created_at=d.created_at)
 
 
-def _get(db: Session, doc_id: str) -> Document:
+def _get(db: Session, doc_id: str, user: User) -> Document:
     d = db.get(Document, doc_id)
-    if d is None:
-        raise HTTPException(404, "Document not found")
+    if d is None or not (can_see_all(user) or d.owner_id == user.id):
+        raise HTTPException(404, "Document not found")  # 404, not 403: don't reveal other users' documents
     return d
 
 
@@ -94,7 +95,7 @@ def health():
 
 
 @router.post("/documents", response_model=DocumentSummary, status_code=201)
-async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
     limit = get_settings().max_upload_mb * 1024 * 1024
     data = await file.read(limit + 1)
     if len(data) > limit:
@@ -106,7 +107,7 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
     except IngestError as e:
         raise HTTPException(415, str(e)) from e
     doc = Document(filename=(file.filename or "upload")[:255], kind=kind, mime=MIME[kind], size=len(data),
-                   sha256=hashlib.sha256(data).hexdigest(), storage_key="")
+                   sha256=hashlib.sha256(data).hexdigest(), storage_key="", owner_id=user.id)
     db.add(doc)
     db.flush()
     doc.storage_key = f"originals/{doc.id}"
@@ -118,14 +119,16 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
-def list_documents(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
+def list_documents(limit: int = 50, offset: int = 0, user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = select(Document).order_by(Document.created_at.desc()).limit(min(limit, 200)).offset(offset)
+    if not can_see_all(user):
+        q = q.where(Document.owner_id == user.id)
     return [_summary(d) for d in db.scalars(q)]
 
 
 @router.get("/documents/{doc_id}", response_model=DocumentOut)
-def get_document(doc_id: str, db: Session = Depends(get_db)):
-    d = _get(db, doc_id)
+def get_document(doc_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    d = _get(db, doc_id, user)
     return {
         **_summary(d), "sha256": d.sha256, "error": d.error, "review_reasons": d.review_reasons or [],
         "coverage": d.coverage, "page_count": d.page_count, "page_sizes": d.page_sizes or [],
@@ -138,15 +141,16 @@ def get_document(doc_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/documents/{doc_id}/file")
-def get_file(doc_id: str, db: Session = Depends(get_db)):
-    d = _get(db, doc_id)
+def get_file(doc_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    d = _get(db, doc_id, user)
     return Response(get_store().get(d.storage_key), media_type=d.mime,
                     headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
                              "Content-Security-Policy": "sandbox"})
 
 
 @router.get("/documents/{doc_id}/artifacts/{artifact_id}")
-def get_artifact(doc_id: str, artifact_id: int, db: Session = Depends(get_db)):
+def get_artifact(doc_id: str, artifact_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _get(db, doc_id, user)
     a = db.get(ArtifactRow, artifact_id)
     if a is None or a.document_id != doc_id:
         raise HTTPException(404, "Artifact not found")
@@ -155,18 +159,20 @@ def get_artifact(doc_id: str, artifact_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/reviews", response_model=list[DocumentSummary])
-def review_queue(include_reviewed: bool = False, db: Session = Depends(get_db)):
+def review_queue(include_reviewed: bool = False, _: User = Depends(require("reviewer", "admin")),
+                 db: Session = Depends(get_db)):
     q = select(Document).where(Document.needs_review.is_(True)).order_by(Document.risk_score.desc().nulls_first())
     docs = db.scalars(q).all()
     return [_summary(d) for d in docs if include_reviewed or not d.reviews]
 
 
 @router.post("/documents/{doc_id}/reviews", response_model=ReviewOut, status_code=201)
-def add_review(doc_id: str, body: ReviewIn, db: Session = Depends(get_db)):
-    d = _get(db, doc_id)
+def add_review(doc_id: str, body: ReviewIn, user: User = Depends(require("reviewer", "admin")),
+               db: Session = Depends(get_db)):
+    d = _get(db, doc_id, user)
     if d.status in ("queued", "processing"):
         raise HTTPException(409, "Analysis still in progress")
-    r = Review(document_id=d.id, **body.model_dump())
+    r = Review(document_id=d.id, reviewer=user.email, **body.model_dump())
     db.add(r)
     db.commit()
     return r

@@ -5,10 +5,10 @@ Current (MVP):
 - [x] Frontend (upload, viewer w/ overlays, review queue)
 - [x] Docker Compose (postgres, minio, backend, frontend)
 - [ ] Verify PaddleOCR in the `WITH_OCR=1` image (adapter written, not yet run against the real library)
-- [ ] Authentication for API/reviewers
+- [x] Authentication: cookie sessions, roles, admin user management (ADR-009)
 
 Next:
-- Alembic migrations; RBAC for reviewers; audit log; external job queue (RQ/Celery) / process-based workers
+- Alembic migrations (now required: auth changed the schema); audit log; shared login throttle; password-reset/SSO (OIDC); external job queue (RQ/Celery) / process-based workers
 - Calibration on labelled data (e.g. CASIA, Columbia, DocTamper, synthetic PDF edits); per-detector thresholds from ROC
 
 Later:
