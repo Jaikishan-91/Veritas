@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from .analysis.ingest import MIME, IngestError, sniff
 from .auth import can_see, current_user, require
 from .config import get_settings
 from .db import ArtifactRow, Document, Review, User, get_db
+from .notifications import notify_review, send_notification_email
 from .storage import get_store
 
 router = APIRouter(prefix="/api")
@@ -40,7 +41,7 @@ class ArtifactOut(BaseModel):
 
 
 class ReviewIn(BaseModel):
-    decision: Literal["authentic", "tampered", "inconclusive"]
+    decision: Literal["accepted", "rejected", "inconclusive"]  # accepted = authentic, rejected = tampered
     notes: str = Field("", max_length=5000)
 
 
@@ -60,6 +61,7 @@ class DocumentSummary(BaseModel):
     risk_band: str | None
     needs_review: bool
     reviewed: bool
+    decision: str | None  # latest review decision
     created_at: datetime
 
 
@@ -79,7 +81,8 @@ class DocumentOut(DocumentSummary):
 
 def _summary(d: Document) -> dict:
     return dict(id=d.id, filename=d.filename, kind=d.kind, size=d.size, status=d.status, risk_score=d.risk_score,
-                risk_band=d.risk_band, needs_review=d.needs_review, reviewed=bool(d.reviews), created_at=d.created_at)
+                risk_band=d.risk_band, needs_review=d.needs_review, reviewed=bool(d.reviews),
+                decision=d.reviews[-1].decision if d.reviews else None, created_at=d.created_at)
 
 
 def _get(db: Session, doc_id: str, user: User) -> Document:
@@ -166,12 +169,16 @@ def review_queue(include_reviewed: bool = False, _: User = Depends(require("revi
 
 
 @router.post("/documents/{doc_id}/reviews", response_model=ReviewOut, status_code=201)
-def add_review(doc_id: str, body: ReviewIn, user: User = Depends(require("reviewer", "admin")),
-               db: Session = Depends(get_db)):
+def add_review(doc_id: str, body: ReviewIn, background: BackgroundTasks,
+               user: User = Depends(require("reviewer", "admin")), db: Session = Depends(get_db)):
     d = _get(db, doc_id, user)
     if d.status in ("queued", "processing"):
         raise HTTPException(409, "Analysis still in progress")
     r = Review(document_id=d.id, reviewer=user.email, **body.model_dump())
     db.add(r)
+    db.flush()
+    mail = notify_review(db, d, r)
     db.commit()
+    if mail:
+        background.add_task(send_notification_email, *mail)  # after the response; failure is logged only
     return r

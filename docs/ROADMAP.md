@@ -7,6 +7,7 @@ Current (MVP):
 - [ ] Verify PaddleOCR in the `WITH_OCR=1` image (adapter written, not yet run against the real library)
 - [x] Authentication: cookie sessions, roles, admin user management (ADR-009)
 - [x] Self sign-up with emailed OTP; landing page and home dashboard; owner-only visibility (ADR-010/011)
+- [x] Review decisions (accepted/rejected) notify owners in-app and by email; reviewers keep access after review (ADR-013)
 
 Next:
 - **Alembic migrations (urgent: schema resets caused data loss)**; password reset via OTP; sign-up rate limiting/CAPTCHA; audit log; shared login throttle; password-reset/SSO (OIDC); external job queue (RQ/Celery) / process-based workers

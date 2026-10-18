@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .config import get_settings
@@ -28,7 +28,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(16), default="analyst")  # analyst | reviewer | admin
+    role: Mapped[str] = mapped_column(String(16), default="user")  # user | reviewer | admin
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -44,6 +44,17 @@ class OtpCode(Base):
     consumed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(32))
+    message: Mapped[str] = mapped_column(Text)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class AuthSession(Base):
@@ -120,6 +131,20 @@ class Review(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+# Idempotent value renames for existing rows (ADR-013). Replace with Alembic data migrations.
+DATA_UPGRADES = [
+    "UPDATE users SET role = 'user' WHERE role = 'analyst'",
+    "UPDATE reviews SET decision = 'accepted' WHERE decision = 'authentic'",
+    "UPDATE reviews SET decision = 'rejected' WHERE decision = 'tampered'",
+]
+
+
+def upgrade_data(engine) -> None:
+    with engine.begin() as conn:
+        for stmt in DATA_UPGRADES:
+            conn.execute(text(stmt))
+
+
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
     url = get_settings().database_url
@@ -129,6 +154,7 @@ def get_sessionmaker() -> sessionmaker[Session]:
         kw["connect_args"] = {"check_same_thread": False}
     engine = create_engine(url, pool_pre_ping=True, **kw)
     Base.metadata.create_all(engine)  # ADR-005: no migrations for MVP
+    upgrade_data(engine)
     return sessionmaker(engine, expire_on_commit=False)
 
 

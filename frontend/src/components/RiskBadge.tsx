@@ -1,5 +1,15 @@
 import { Link } from "react-router-dom";
-import type { DocumentSummary } from "../api";
+import type { Decision, DocumentSummary } from "../api";
+
+const DECISION: Record<Decision, string> = {
+  accepted: "bg-emerald-100 text-emerald-800",
+  rejected: "bg-rose-100 text-rose-800",
+  inconclusive: "bg-slate-200 text-slate-700",
+};
+
+export function DecisionBadge({ decision }: { decision: Decision }) {
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${DECISION[decision]}`}>{decision}</span>;
+}
 
 const BAND: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-800",
@@ -30,7 +40,7 @@ export function DocTable({ docs, empty }: { docs: DocumentSummary[]; empty: stri
             <td className="p-2"><Link className="text-blue-700 hover:underline" to={`/documents/${d.id}`}>{d.filename}</Link></td>
             <td className="p-2 uppercase text-slate-500">{d.kind}</td>
             <td className="p-2"><RiskBadge doc={d} /></td>
-            <td className="p-2 text-slate-600">{d.reviewed ? "reviewed" : d.needs_review ? "pending" : "—"}</td>
+            <td className="p-2 text-slate-600">{d.decision ? <DecisionBadge decision={d.decision} /> : d.needs_review ? "pending" : "—"}</td>
             <td className="p-2 text-slate-500">{new Date(d.created_at).toLocaleString()}</td>
           </tr>
         ))}

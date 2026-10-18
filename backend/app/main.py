@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, worker
+from . import auth, notifications, worker
 from .api import router
 from .config import get_settings
 from .db import get_sessionmaker
@@ -29,4 +29,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth.router)
+app.include_router(notifications.router)
 app.include_router(router)

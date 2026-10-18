@@ -26,6 +26,7 @@ export interface DocumentSummary {
   risk_band: "low" | "medium" | "high" | null;
   needs_review: boolean;
   reviewed: boolean;
+  decision: Decision | null;
   created_at: string;
 }
 
@@ -45,7 +46,9 @@ export interface DocumentDetail extends DocumentSummary {
   reviews: Review[];
 }
 
-export type Role = "analyst" | "reviewer" | "admin";
+export type Role = "user" | "reviewer" | "admin";
+export type Decision = "accepted" | "rejected" | "inconclusive";
+export interface Notification { id: number; document_id: string | null; kind: string; message: string; read: boolean; created_at: string }
 export interface User { id: string; email: string; role: Role; active: boolean; created_at: string }
 
 /** Fired on any 401 so the app can drop back to the login screen. */
@@ -88,7 +91,10 @@ export const api = {
   },
   list: () => req<DocumentSummary[]>("/api/documents"),
   get: (id: string) => req<DocumentDetail>(`/api/documents/${id}`),
-  reviews: () => req<DocumentSummary[]>("/api/reviews"),
-  review: (id: string, body: { decision: string; notes: string }) =>
+  reviews: (includeReviewed = false) => req<DocumentSummary[]>(`/api/reviews?include_reviewed=${includeReviewed}`),
+  notifications: () => req<Notification[]>("/api/notifications"),
+  markRead: (id: number) => req<Notification>(`/api/notifications/${id}/read`, { method: "POST" }),
+  markAllRead: () => req<void>("/api/notifications/read-all", { method: "POST" }),
+  review: (id: string, body: { decision: Decision; notes: string }) =>
     req<Review>(`/api/documents/${id}/reviews`, json("POST", body)),
 };

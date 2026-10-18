@@ -58,3 +58,8 @@ Date: 2026-10-18
 Context: Headings, form labels and accent fonts were reported as font mismatches, and up to 5 such hits stacked to a score of about 0.6 on clean documents.
 Decision: A span can be reported for font, size or colour only if its style (family, size, colour) is rare on the page, meaning it appears on fewer than 3 visual lines and makes up under 15% of the text. Retyped fields are typically one-offs, while design styles recur. In fusion, the i-th finding from the same detector is weighted by 0.5^i, because repeated hits are correlated evidence.
 Limitation: A forger who reuses one insertion style on 3 or more lines makes it look like design. Baseline-offset and covered-text checks still apply.
+
+ADR-013 — Review decisions notify owners; reviewers keep access; role `analyst` renamed `user`
+Date: 2026-10-18
+Context: Owners must learn whether their document was accepted or rejected. Reviewers and admins must keep access after deciding. The ordinary role should be called `user`.
+Decision: Review decisions are now `accepted` (authentic), `rejected` (tampered) and `inconclusive`. Each decision creates an in-app `notifications` row for the owner and sends a best-effort email after the response (FastAPI BackgroundTasks). A failed email is logged and does not fail the review. Reviewing your own document sends no notification. Reviewers and admins can open a document while it is flagged or once it has any review. The queue has Pending and Reviewed tabs (`include_reviewed=true`). Existing rows are renamed by idempotent `UPDATE`s at startup (`db.DATA_UPGRADES`: analyst to user, authentic to accepted, tampered to rejected). This is a stop-gap until Alembic data migrations. API values `analyst`/`authentic`/`tampered` are no longer accepted (422).

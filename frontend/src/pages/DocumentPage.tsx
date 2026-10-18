@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../auth";
-import { api, type DocumentDetail, type Finding } from "../api";
+import { api, type Decision, type DocumentDetail, type Finding } from "../api";
 import { CAT_COLOR, PageView, usePdf } from "../components/PageView";
-import { RiskBadge } from "../components/RiskBadge";
+import { DecisionBadge, RiskBadge } from "../components/RiskBadge";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -84,6 +84,7 @@ export default function DocumentPage() {
 
       <aside className="space-y-4">
         <Summary doc={doc} />
+        <DecisionBanner doc={doc} />
         {doc.needs_review && canReview && <ReviewForm doc={doc} onDone={setDoc} />}
         <section>
           <h2 className="font-semibold mb-2">Evidence ({doc.findings.length})</h2>
@@ -169,8 +170,24 @@ function Summary({ doc }: { doc: DocumentDetail }) {
   );
 }
 
+const DECISIONS: [Decision, string][] = [["accepted", "Accept"], ["rejected", "Reject"], ["inconclusive", "Inconclusive"]];
+
+function DecisionBanner({ doc }: { doc: DocumentDetail }) {
+  const last = doc.reviews.at(-1);
+  if (!last) return null;
+  const tone = last.decision === "accepted" ? "border-emerald-200 bg-emerald-50"
+    : last.decision === "rejected" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50";
+  return (
+    <div className={`rounded-lg border p-4 text-sm space-y-1 ${tone}`}>
+      <div className="flex items-center gap-2 font-semibold">Review decision <DecisionBadge decision={last.decision as Decision} /></div>
+      {last.notes && <p className="text-slate-700">{last.notes}</p>}
+      <p className="text-xs text-slate-500">by {last.reviewer} · {new Date(last.created_at).toLocaleString()}</p>
+    </div>
+  );
+}
+
 function ReviewForm({ doc, onDone }: { doc: DocumentDetail; onDone: (d: DocumentDetail) => void }) {
-  const [decision, setDecision] = useState("inconclusive");
+  const [decision, setDecision] = useState<Decision>("inconclusive");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -190,9 +207,9 @@ function ReviewForm({ doc, onDone }: { doc: DocumentDetail; onDone: (d: Document
       <h2 className="font-semibold">Human review</h2>
       {last && <p className="text-xs text-slate-600">Last decision: <b>{last.decision}</b>{last.reviewer && ` by ${last.reviewer}`} — {last.notes}</p>}
       <div className="flex gap-2">
-        {["authentic", "tampered", "inconclusive"].map((d) => (
+        {DECISIONS.map(([d, label]) => (
           <label key={d} className={`flex-1 cursor-pointer rounded border px-2 py-1 text-center ${decision === d ? "bg-slate-900 text-white" : ""}`}>
-            <input type="radio" className="hidden" name="decision" value={d} checked={decision === d} onChange={() => setDecision(d)} />{d}
+            <input type="radio" className="hidden" name="decision" value={d} checked={decision === d} onChange={() => setDecision(d)} />{label}
           </label>
         ))}
       </div>

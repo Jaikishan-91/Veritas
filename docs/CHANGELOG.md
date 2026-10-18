@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-18 — Review notifications, post-review access, role rename
+Added: owner notifications for review decisions (header bell plus email), a decision banner on the document page, Pending/Reviewed tabs in the review queue, and the `decision` field on summaries.
+Changed: decisions are `accepted`/`rejected`/`inconclusive` (were authentic/tampered/inconclusive). Role `analyst` is renamed `user`. Reviewers and admins keep access to reviewed documents. Existing rows are upgraded in place at startup (no DB reset).
+Verified: `pytest` 44 passed (5 new: notification in-app and email, email failure isolation, post-review access, invalid decision and no self-notify, idempotent data upgrade). `npm run build` OK. Docker E2E (backend temporarily pointed at Mailpit, then restored to `.env` Gmail SMTP): existing analysts became `user`; the admin rejected a document; the owner got an unread `review_rejected` notification and an email in Mailpit; the summary shows `rejected`; the admin can still open the document and its file and sees it under Reviewed; role `analyst` is now 422.
+Not verified: notification email through Gmail; the new UI in a browser.
+
 ## 2026-10-18 — Sign-up, OTP, home pages, visibility, font fix
 Added: sign-up page with emailed 6-digit OTP verification (SMTP, or a console fallback), resend with cooldown, public landing page, logged-in home dashboard (Analyze moved to `/analyze`), optional Mailpit compose profile.
 Changed: document visibility is owner-only, plus reviewers/admins for documents flagged for review (ADR-011). Font mismatch ignores page-design styles, and fusion decays repeated findings from one detector (ADR-012). Users have a new `email_verified` column and there is a new `otp_codes` table, so the DB was reset.

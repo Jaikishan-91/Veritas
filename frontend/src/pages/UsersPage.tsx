@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { api, type Role, type User } from "../api";
 import { useAuth } from "../auth";
 
-const ROLES: Role[] = ["analyst", "reviewer", "admin"];
+const ROLES: Role[] = ["user", "reviewer", "admin"];
 
 export default function UsersPage() {
   const { user: me } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ email: "", password: "", role: "analyst" as Role });
+  const [form, setForm] = useState({ email: "", password: "", role: "user" as Role });
 
   const load = () => api.users().then(setUsers).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -21,7 +21,7 @@ export default function UsersPage() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     await run(api.createUser(form));
-    setForm({ email: "", password: "", role: "analyst" });
+    setForm({ email: "", password: "", role: "user" });
   }
 
   return (

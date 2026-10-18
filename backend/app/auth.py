@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 
 COOKIE = "veritas_session"
 CSRF_HEADER = "X-Requested-With"
-ROLES = ("analyst", "reviewer", "admin")
-Role = Literal["analyst", "reviewer", "admin"]
+ROLES = ("user", "reviewer", "admin")
+Role = Literal["user", "reviewer", "admin"]
 
 # --- passwords (stdlib scrypt) ---------------------------------------------------------------
 _N, _R, _P = 2**14, 8, 1
@@ -102,8 +102,9 @@ def require(*roles: str):
 
 
 def can_see(user: User, doc: Document) -> bool:
-    """Owners see their documents; reviewers/admins additionally see documents routed for human review."""
-    return doc.owner_id == user.id or (user.role in ("reviewer", "admin") and doc.needs_review)
+    """Owners see their documents; reviewers/admins also see documents routed for review, including after the
+    review decision (ADR-011, ADR-013)."""
+    return doc.owner_id == user.id or (user.role in ("reviewer", "admin") and (doc.needs_review or bool(doc.reviews)))
 
 
 def bootstrap_admin() -> None:
@@ -144,7 +145,7 @@ def _check_email(v: str) -> str:
 class UserCreate(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(min_length=10, max_length=256)
-    role: Role = "analyst"
+    role: Role = "user"
     _email = field_validator("email")(_check_email)
 
 
@@ -244,7 +245,7 @@ def signup(body: SignupIn, db: Session = Depends(get_db)):
     if user and user.email_verified:
         raise HTTPException(409, "Email already registered")
     if user is None:
-        user = User(email=body.email, password_hash=hash_password(body.password), role="analyst")
+        user = User(email=body.email, password_hash=hash_password(body.password), role="user")
         db.add(user)
     else:  # unverified re-sign-up: new password; the emailed code still proves mailbox ownership
         user.password_hash = hash_password(body.password)

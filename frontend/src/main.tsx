@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-do
 import "./index.css";
 import { AuthProvider, useAuth } from "./auth";
 import { PublicHeader } from "./components/AuthCard";
+import { NotificationBell } from "./components/NotificationBell";
 import HomePage from "./pages/HomePage";
 import LandingPage from "./pages/LandingPage";
 import UploadPage from "./pages/UploadPage";
@@ -48,6 +49,7 @@ function App() {
             {admin && <NavLink to="/users" className={link}>Users</NavLink>}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-slate-600">
+            <NotificationBell />
             <span className="hidden sm:inline">{user.email} · {user.role}</span>
             <button onClick={logout} className="rounded border px-2 py-1 hover:bg-slate-100">Sign out</button>
           </div>
