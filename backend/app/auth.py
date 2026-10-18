@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import threading
 import time
@@ -16,7 +17,10 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .db import AuthSession, User, get_db, get_sessionmaker
+from .db import AuthSession, Document, OtpCode, User, get_db, get_sessionmaker
+from .mailer import MailError, send_email
+
+log = logging.getLogger(__name__)
 
 COOKIE = "veritas_session"
 CSRF_HEADER = "X-Requested-With"
@@ -97,8 +101,9 @@ def require(*roles: str):
     return dep
 
 
-def can_see_all(user: User) -> bool:
-    return user.role in ("reviewer", "admin")
+def can_see(user: User, doc: Document) -> bool:
+    """Owners see their documents; reviewers/admins additionally see documents routed for human review."""
+    return doc.owner_id == user.id or (user.role in ("reviewer", "admin") and doc.needs_review)
 
 
 def bootstrap_admin() -> None:
@@ -108,7 +113,7 @@ def bootstrap_admin() -> None:
     with get_sessionmaker()() as db:
         if db.scalar(select(func.count()).select_from(User)) == 0:
             db.add(User(email=s.bootstrap_admin_email.lower(), password_hash=hash_password(s.bootstrap_admin_password),
-                        role="admin"))
+                        role="admin", email_verified=True))
             db.commit()
 
 
@@ -159,6 +164,13 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     if not (user and ok and user.active):
         _record_fail(email)
         raise HTTPException(401, "Invalid email or password")
+    if not user.email_verified:  # password was correct, so revealing this is safe
+        raise HTTPException(403, "email_not_verified")
+    _start_session(db, user, response)
+    return user
+
+
+def _start_session(db: Session, user: User, response: Response) -> None:
     s = get_settings()
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
@@ -167,7 +179,107 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     db.commit()
     response.set_cookie(COOKIE, token, max_age=s.session_hours * 3600, httponly=True, samesite="strict",
                         secure=s.cookie_secure, path="/api")
+
+
+# --- sign-up with emailed one-time code ------------------------------------------------------
+_secret: bytes | None = None
+
+
+def _otp_key() -> bytes:
+    global _secret
+    if _secret is None:
+        k = get_settings().secret_key
+        if not k:
+            log.warning("VERITAS_SECRET_KEY not set; using a random key (pending OTP codes are lost on restart)")
+            k = secrets.token_hex(32)
+        _secret = k.encode()
+    return _secret
+
+
+def _otp_hash(user_id: str, code: str) -> str:
+    return hmac.new(_otp_key(), f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
+def _issue_otp(db: Session, user: User) -> None:
+    s = get_settings()
+    now = datetime.now(timezone.utc)
+    last = db.scalar(select(OtpCode).where(OtpCode.user_id == user.id).order_by(OtpCode.created_at.desc()))
+    if last and (now - _aware(last.created_at)).total_seconds() < s.otp_resend_seconds:
+        return  # cooldown: keep the existing code (prevents mail bombing)
+    db.execute(delete(OtpCode).where(OtpCode.user_id == user.id))  # only the newest code is valid
+    code = f"{secrets.randbelow(10**6):06d}"
+    db.add(OtpCode(user_id=user.id, code_hash=_otp_hash(user.id, code),
+                   expires_at=now + timedelta(minutes=s.otp_ttl_minutes)))
+    db.commit()
+    try:
+        send_email(user.email, f"Your Veritas verification code: {code}",
+                   f"Your Veritas verification code is {code}\n\nIt expires in {s.otp_ttl_minutes} minutes. "
+                   "If you did not sign up, ignore this email.")
+    except MailError as e:
+        db.execute(delete(OtpCode).where(OtpCode.user_id == user.id))  # allow an immediate retry
+        db.commit()
+        raise HTTPException(502, "Could not send verification email; try again later") from e
+
+
+class SignupIn(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(min_length=10, max_length=256)
+    _email = field_validator("email")(_check_email)
+
+
+class VerifyIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class EmailIn(BaseModel):
+    email: str = Field(max_length=254)
+
+
+@router.post("/auth/signup", status_code=202)
+def signup(body: SignupIn, db: Session = Depends(get_db)):
+    if not get_settings().allow_signup:
+        raise HTTPException(403, "Sign-up is disabled")
+    user = db.scalar(select(User).where(User.email == body.email))
+    if user and user.email_verified:
+        raise HTTPException(409, "Email already registered")
+    if user is None:
+        user = User(email=body.email, password_hash=hash_password(body.password), role="analyst")
+        db.add(user)
+    else:  # unverified re-sign-up: new password; the emailed code still proves mailbox ownership
+        user.password_hash = hash_password(body.password)
+    db.commit()
+    _issue_otp(db, user)
+    return {"status": "verification_required", "email": user.email}
+
+
+@router.post("/auth/verify", response_model=UserOut)
+def verify(body: VerifyIn, response: Response, db: Session = Depends(get_db)):
+    s = get_settings()
+    bad = HTTPException(400, "Invalid or expired code")
+    user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
+    if user is None or user.email_verified or not user.active:
+        raise bad
+    otp = db.scalar(select(OtpCode).where(OtpCode.user_id == user.id, OtpCode.consumed.is_(False)))
+    if otp is None or _aware(otp.expires_at) < datetime.now(timezone.utc) or otp.attempts >= s.otp_max_attempts:
+        raise bad
+    if not hmac.compare_digest(otp.code_hash, _otp_hash(user.id, body.code)):
+        otp.attempts += 1
+        db.commit()
+        raise bad
+    otp.consumed = True
+    user.email_verified = True
+    db.commit()
+    _start_session(db, user, response)
     return user
+
+
+@router.post("/auth/resend", status_code=202)
+def resend(body: EmailIn, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
+    if user and not user.email_verified and user.active:
+        _issue_otp(db, user)
+    return {"status": "sent_if_pending"}  # same answer either way: no account enumeration
 
 
 @router.post("/auth/logout", status_code=204)
@@ -191,7 +303,7 @@ def list_users(_: User = Depends(require("admin")), db: Session = Depends(get_db
 def create_user(body: UserCreate, _: User = Depends(require("admin")), db: Session = Depends(get_db)):
     if db.scalar(select(User).where(User.email == body.email)):
         raise HTTPException(409, "Email already registered")
-    u = User(email=body.email, password_hash=hash_password(body.password), role=body.role)
+    u = User(email=body.email, password_hash=hash_password(body.password), role=body.role, email_verified=True)
     db.add(u)
     db.commit()
     return u

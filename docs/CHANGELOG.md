@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-18 — Sign-up, OTP, home pages, visibility, font fix
+Added: sign-up page with emailed 6-digit OTP verification (SMTP, or a console fallback), resend with cooldown, public landing page, logged-in home dashboard (Analyze moved to `/analyze`), optional Mailpit compose profile.
+Changed: document visibility is owner-only, plus reviewers/admins for documents flagged for review (ADR-011). Font mismatch ignores page-design styles, and fusion decays repeated findings from one detector (ADR-012). Users have a new `email_verified` column and there is a new `otp_codes` table, so the DB was reset.
+Fixed: clean documents with headings, labels and accent fonts no longer accumulate font-mismatch risk. The regression fixture had 7 false findings and now has 0.
+Verified: `pytest` 39 passed (7 new sign-up/OTP tests, a visibility test, a styled-document regression test, a decay test). `npm run build` OK. Docker E2E: sign-up 202; login before verify 403; code received as email in Mailpit; verify 200 logs the user in. The owner sees their document. Admin's list is empty. Admin can open the flagged documents (and they appear in the queue), but gets 404 for the unflagged clean document and its file.
+Not verified: delivery through a real SMTP provider; the new pages in a browser.
+Incident: the DB reset in this change deleted user-uploaded documents and accounts. The model ran the data check and `docker compose down -v` in one command instead of stopping to review the check.
+
 ## 2026-10-18 — Authentication
 Added: cookie-session auth, analyst/reviewer/admin roles, per-owner document isolation, admin user management API and UI, login page, login throttling, CSRF header check, bootstrap admin from env.
 Changed: review `reviewer` comes from the session (request field removed). `documents.owner_id` added, so existing databases need a reset.

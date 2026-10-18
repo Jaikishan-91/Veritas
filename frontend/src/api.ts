@@ -55,7 +55,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("X-Requested-With", "veritas"); // CSRF guard required by the API for writes
   const r = await fetch(path, { ...init, headers, credentials: "same-origin" });
-  if (r.status === 401 && !path.endsWith("/auth/login")) window.dispatchEvent(new Event(UNAUTHORIZED));
+  if (r.status === 401 && !path.startsWith("/api/auth/")) window.dispatchEvent(new Event(UNAUTHORIZED));
   if (r.status === 204) return undefined as T;
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
@@ -72,6 +72,10 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const api = {
   login: (email: string, password: string) => req<User>("/api/auth/login", json("POST", { email, password })),
   logout: () => req<void>("/api/auth/logout", { method: "POST" }),
+  signup: (email: string, password: string) =>
+    req<{ status: string; email: string }>("/api/auth/signup", json("POST", { email, password })),
+  verify: (email: string, code: string) => req<User>("/api/auth/verify", json("POST", { email, code })),
+  resend: (email: string) => req<{ status: string }>("/api/auth/resend", json("POST", { email })),
   me: () => req<User>("/api/auth/me"),
   users: () => req<User[]>("/api/users"),
   createUser: (body: { email: string; password: string; role: Role }) => req<User>("/api/users", json("POST", body)),

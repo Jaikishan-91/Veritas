@@ -146,8 +146,11 @@ def test_analyst_isolation_and_roles(admin, app, copy_move_png):
     assert a1.get("/api/reviews").status_code == 403
     assert a1.post(f"/api/documents/{doc_id}/reviews", json={"decision": "tampered"}).status_code == 403
     assert a1.get("/api/users").status_code == 403
-    # reviewers see everything and can review
+    # reviewers see another user's document only because it was routed for review, and can review it
+    assert d["needs_review"]
     assert rev.get(f"/api/documents/{doc_id}").status_code == 200
+    assert rev.get("/api/documents").json() == []  # lists show only your own documents
+    assert doc_id in [x["id"] for x in rev.get("/api/reviews").json()]
     assert rev.post(f"/api/documents/{doc_id}/reviews", json={"decision": "authentic"}).status_code == 201
     assert rev.post("/api/users", json={"email": "x@y.z", "password": "0123456789"}).status_code == 403
 
@@ -162,3 +165,17 @@ def test_user_management(admin, app):
     assert TestClient(app).post("/api/auth/login", json={"email": "bob@example.com", "password": "user-password-1"}).status_code == 401
     me = admin.get("/api/auth/me").json()
     assert admin.patch(f"/api/users/{me['id']}", json={"role": "analyst"}).status_code == 400
+
+
+def test_unflagged_documents_private_from_reviewers_and_admins(admin, app, clean_pdf, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config.get_settings(), "min_coverage", 0.0)  # clean doc -> not routed to review
+    make_user(admin, "a1@example.com", "analyst")
+    make_user(admin, "rev@example.com", "reviewer")
+    a1, rev = login(app, "a1@example.com", "user-password-1"), login(app, "rev@example.com", "user-password-1")
+    doc_id = a1.post("/api/documents", files={"file": ("c.pdf", clean_pdf, "application/pdf")}).json()["id"]
+    assert a1.get(f"/api/documents/{doc_id}").json()["needs_review"] is False
+    for other in (rev, admin):
+        assert other.get(f"/api/documents/{doc_id}").status_code == 404
+        assert other.get(f"/api/documents/{doc_id}/file").status_code == 404
+        assert doc_id not in [x["id"] for x in other.get("/api/documents").json()]

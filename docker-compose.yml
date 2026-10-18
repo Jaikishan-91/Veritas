@@ -35,6 +35,14 @@ services:
       VERITAS_BOOTSTRAP_ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       VERITAS_BOOTSTRAP_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       VERITAS_COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      VERITAS_SECRET_KEY: ${SECRET_KEY:-}
+      VERITAS_ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      VERITAS_SMTP_HOST: ${SMTP_HOST:-}
+      VERITAS_SMTP_PORT: ${SMTP_PORT:-587}
+      VERITAS_SMTP_USER: ${SMTP_USER:-}
+      VERITAS_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      VERITAS_SMTP_FROM: ${SMTP_FROM:-}
+      VERITAS_SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
     ports: ["8000:8000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -44,6 +52,13 @@ services:
     build: ./frontend
     ports: ["8080:80"]
     depends_on: [backend]
+
+  # Optional local inbox for testing OTP mail: `docker compose --profile mailpit up -d`,
+  # then SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_SECURITY=none; inbox at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: [mailpit]
+    ports: ["8025:8025"]
 
 volumes:
   pgdata:

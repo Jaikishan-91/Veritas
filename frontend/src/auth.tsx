@@ -5,6 +5,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  verify: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -22,12 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => setUser(await api.login(email, password)), []);
+  const verify = useCallback(async (email: string, code: string) => setUser(await api.verify(email, code)), []);
   const logout = useCallback(async () => {
     await api.logout().catch(() => {});
     setUser(null);
   }, []);
 
-  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, login, verify, logout }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth(): AuthState {

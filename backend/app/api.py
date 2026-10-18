@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from . import worker
 from .analysis.ingest import MIME, IngestError, sniff
-from .auth import can_see_all, current_user, require
+from .auth import can_see, current_user, require
 from .config import get_settings
 from .db import ArtifactRow, Document, Review, User, get_db
 from .storage import get_store
@@ -84,7 +84,7 @@ def _summary(d: Document) -> dict:
 
 def _get(db: Session, doc_id: str, user: User) -> Document:
     d = db.get(Document, doc_id)
-    if d is None or not (can_see_all(user) or d.owner_id == user.id):
+    if d is None or not can_see(user, d):
         raise HTTPException(404, "Document not found")  # 404, not 403: don't reveal other users' documents
     return d
 
@@ -120,9 +120,8 @@ async def upload(file: UploadFile = File(...), user: User = Depends(current_user
 
 @router.get("/documents", response_model=list[DocumentSummary])
 def list_documents(limit: int = 50, offset: int = 0, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    q = select(Document).order_by(Document.created_at.desc()).limit(min(limit, 200)).offset(offset)
-    if not can_see_all(user):
-        q = q.where(Document.owner_id == user.id)
+    q = (select(Document).where(Document.owner_id == user.id)  # everyone lists only their own documents
+         .order_by(Document.created_at.desc()).limit(min(limit, 200)).offset(offset))
     return [_summary(d) for d in db.scalars(q)]
 
 

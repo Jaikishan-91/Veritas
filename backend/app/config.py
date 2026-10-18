@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = ""  # created on startup if no users exist
     bootstrap_admin_password: str = ""
 
+    secret_key: str = ""  # HMAC key for OTP hashes; random per process if unset (codes die on restart)
+    allow_signup: bool = True
+    otp_ttl_minutes: int = 10
+    otp_max_attempts: int = 5
+    otp_resend_seconds: int = 60
+
+    # Outgoing mail for OTP codes. Empty smtp_host = log codes to the console (development only).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_security: str = "starttls"  # starttls | ssl | none
+
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
 
 

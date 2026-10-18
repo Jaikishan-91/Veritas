@@ -8,7 +8,7 @@ cp .env.example .env        # set ADMIN_EMAIL / ADMIN_PASSWORD and other credent
 docker compose up -d --build
 # UI: http://localhost:8080   API: http://localhost:8000/docs   MinIO console: http://localhost:9001
 ```
-Sign in with `ADMIN_EMAIL`/`ADMIN_PASSWORD`, then add analysts/reviewers under **Users**. The first admin is created only when no users exist. Set `COOKIE_SECURE=true` behind HTTPS. Upgrading from a pre-auth database requires `docker compose down -v` (no migrations yet).
+New users can **sign up** at /signup and verify with a 6-digit code sent to their email. Configure `SMTP_*` in `.env`; without SMTP, codes appear in `docker compose logs backend`. For a local test inbox, run `docker compose --profile mailpit up -d` with `SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_SECURITY=none` and open http://localhost:8025. Sign in with `ADMIN_EMAIL`/`ADMIN_PASSWORD` to promote users to reviewer/admin under **Users**. Documents are private to their owner; reviewers see only documents flagged for review. The first admin is created only when no users exist. Set `COOKIE_SECURE=true` behind HTTPS. Upgrading from a pre-auth database requires `docker compose down -v` (no migrations yet).
 
 Set `WITH_OCR=1` in `.env` to bake PaddleOCR into the backend image. Without it, the `ocr_text` detector reports `unavailable` and coverage drops.
 

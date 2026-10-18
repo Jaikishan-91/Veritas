@@ -43,7 +43,7 @@ export default function UploadPage() {
       </label>
       {error && <p className="rounded bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
       <section>
-        <h2 className="mb-3 font-semibold">Recent documents</h2>
+        <h2 className="mb-3 font-semibold">Your documents</h2>
         <DocTable docs={docs} empty="No documents analysed yet." />
       </section>
     </div>
