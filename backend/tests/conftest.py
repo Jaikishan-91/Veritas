@@ -1,0 +1,94 @@
+import io
+
+import cv2
+import numpy as np
+import pymupdf
+import pytest
+from PIL import Image
+
+from app.analysis.detectors import ocr_text
+
+
+@pytest.fixture(autouse=True)
+def no_ocr():
+    """Tests never load PaddleOCR; individual tests inject a fake engine."""
+    def unavailable(_):
+        raise ocr_text.DetectorUnavailable("disabled in tests")
+    ocr_text.set_engine(unavailable)
+    yield
+    ocr_text.set_engine(None)
+
+
+def texture(h=480, w=640, seed=0, noise=4.0) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    base = cv2.GaussianBlur(rng.uniform(0, 255, (h, w, 3)).astype(np.float32), (0, 0), 6)
+    base = cv2.normalize(base, None, 30, 220, cv2.NORM_MINMAX)
+    yy, xx = np.mgrid[0:h, 0:w]
+    base += (np.sin(xx / 23.0) * 15 + np.cos(yy / 17.0) * 15)[..., None]
+    base += rng.normal(0, noise, base.shape)
+    return np.clip(base, 0, 255).astype(np.uint8)
+
+
+def to_bytes(rgb: np.ndarray, fmt: str, **kw) -> bytes:
+    buf = io.BytesIO()
+    Image.fromarray(rgb).save(buf, fmt, **kw)
+    return buf.getvalue()
+
+
+def jpeg_roundtrip(rgb: np.ndarray, q: int) -> np.ndarray:
+    return np.array(Image.open(io.BytesIO(to_bytes(rgb, "JPEG", quality=q))).convert("RGB"))
+
+
+LINES = ["INVOICE #10442", "Customer: Jane Example", "Item: Consulting services", "Amount due: 1,250.00 USD"]
+
+
+def make_pdf() -> pymupdf.Document:
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    for i, line in enumerate(LINES):
+        page.insert_text((72, 100 + 24 * i), line, fontname="helv", fontsize=12)
+    doc.set_metadata({"producer": "ReportGen 2.1", "creator": "ReportGen",
+                      "creationDate": "D:20240101100000+00'00'", "modDate": "D:20240101100000+00'00'"})
+    return doc
+
+
+@pytest.fixture
+def clean_pdf() -> bytes:
+    return make_pdf().tobytes()
+
+
+@pytest.fixture
+def tampered_pdf(tmp_path, clean_pdf) -> bytes:
+    p = tmp_path / "t.pdf"
+    p.write_bytes(clean_pdf)
+    doc = pymupdf.open(p)
+    page = doc[0]
+    # white-box over the amount, retype a new amount in a different font on the same baseline
+    page.draw_rect(pymupdf.Rect(148, 160, 215, 177), color=None, fill=(1, 1, 1))
+    page.insert_text((150, 172), "9,250.00", fontname="tiro", fontsize=12)
+    doc.set_metadata({**doc.metadata, "producer": "PDFescape Online", "modDate": "D:20240320100000+00'00'"})
+    doc.saveIncr()
+    return p.read_bytes()
+
+
+@pytest.fixture
+def copy_move_png() -> tuple[bytes, tuple[int, int, int, int]]:
+    img = texture(seed=1)
+    img[260:360, 360:460] = img[60:160, 60:160]
+    return to_bytes(img, "PNG"), (360, 260, 460, 360)
+
+
+@pytest.fixture
+def spliced_jpeg() -> tuple[bytes, tuple[int, int, int, int]]:
+    base = jpeg_roundtrip(texture(seed=2, noise=1.0), 60)
+    donor = texture(seed=3, noise=12.0)
+    base[200:328, 300:460] = donor[200:328, 300:460]
+    return to_bytes(base, "JPEG", quality=95), (300, 200, 460, 328)
+
+
+@pytest.fixture
+def photoshop_jpeg() -> bytes:
+    img = Image.fromarray(texture(seed=4))
+    exif = Image.Exif()
+    exif[305] = "Adobe Photoshop 25.0 (Windows)"
+    return to_bytes(np.array(img), "JPEG", quality=90, exif=exif.tobytes())
