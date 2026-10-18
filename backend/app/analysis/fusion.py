@@ -14,6 +14,7 @@ CATEGORY_WEIGHT = {
     "metadata": 0.5,
 }
 TOP_K = 5  # cap per-detector evidence so many weak hits don't saturate the score
+DECAY = 0.5  # each further finding from the same detector counts half as much as the previous one
 
 
 @dataclass
@@ -37,7 +38,9 @@ def fuse(findings: list[Finding], coverage: float, errors: int, *, band_medium=0
     for f in findings:
         f.contribution = round(CATEGORY_WEIGHT.get(f.category, 0.5) * f.severity * f.confidence, 4)
         by_det.setdefault(f.detector, []).append(f)
-    per_det = [_noisy_or([f.contribution for f in sorted(fs, key=lambda f: -f.contribution)[:TOP_K]])
+    # Repeated hits from one detector are correlated (same cue), so they corroborate rather than multiply.
+    per_det = [_noisy_or([f.contribution * DECAY ** i
+                          for i, f in enumerate(sorted(fs, key=lambda f: -f.contribution)[:TOP_K])])
                for fs in by_det.values()]
     score = round(_noisy_or(per_det), 4)
     band = "high" if score >= band_high else "medium" if score >= band_medium else "low"

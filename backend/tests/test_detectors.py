@@ -121,3 +121,9 @@ def test_pdf_render_capped():
     doc.new_page(width=14400, height=14400)  # 200in square page
     ctx = ingest.load(doc.tobytes(), max_side=2000)
     assert max(ctx.pages[0].shape[:2]) <= 2000
+
+
+def test_styled_document_not_flagged_for_design_fonts(styled_clean_pdf):
+    fs = FontConsistency().run(ingest.load(styled_clean_pdf)).findings
+    assert fs == [], [f.description for f in fs]
+    assert analyze(styled_clean_pdf).fusion.score < 0.3

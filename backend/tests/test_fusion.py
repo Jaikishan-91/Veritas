@@ -26,3 +26,10 @@ def test_review_routing():
     assert fuse([f("d", "text_tampering", 0.6, 0.8)], 1.0, 0).needs_review  # mid-band
     assert fuse([], 0.5, 0).needs_review  # low coverage
     assert fuse([], 1.0, 1).needs_review  # detector error
+
+
+def test_repeated_hits_from_one_detector_decay():
+    one = fuse([f("font", "font_mismatch", 0.45, 0.55)], 1.0, 0).score
+    five = fuse([f("font", "font_mismatch", 0.45, 0.55) for _ in range(5)], 1.0, 0).score
+    assert five < 2 * one  # corroboration, not linear accumulation
+    assert five < 0.35  # design-level noise alone must not reach the high band
