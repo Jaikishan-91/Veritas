@@ -15,7 +15,8 @@ Set `WITH_OCR=1` in `.env` to bake PaddleOCR into the backend image. Without it,
 ## Local dev
 ```bash
 cd backend && python -m venv .venv && .venv/Scripts/pip install -e ".[dev]"   # add ,ocr for PaddleOCR
-VERITAS_BOOTSTRAP_ADMIN_EMAIL=admin@example.com VERITAS_BOOTSTRAP_ADMIN_PASSWORD=change-me-admin \n  .venv/Scripts/uvicorn app.main:app --reload      # SQLite + ./data/objects by default
+VERITAS_BOOTSTRAP_ADMIN_EMAIL=admin@example.com VERITAS_BOOTSTRAP_ADMIN_PASSWORD=change-me-admin \
+  .venv/Scripts/uvicorn app.main:app --reload      # SQLite + ./data/objects by default
 .venv/Scripts/python -m pytest -q
 cd ../frontend && npm i && npm run dev             # http://localhost:5173, proxies /api -> :8000
 ```
