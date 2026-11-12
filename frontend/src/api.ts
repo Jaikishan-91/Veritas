@@ -27,6 +27,7 @@ export interface DocumentSummary {
   needs_review: boolean;
   reviewed: boolean;
   decision: Decision | null;
+  organisation: string | null;
   created_at: string;
 }
 
@@ -46,10 +47,11 @@ export interface DocumentDetail extends DocumentSummary {
   reviews: Review[];
 }
 
-export type Role = "user" | "reviewer" | "admin";
+export type Role = "user" | "organisation" | "admin";
 export type Decision = "accepted" | "rejected" | "inconclusive";
 export interface Notification { id: number; document_id: string | null; kind: string; message: string; read: boolean; created_at: string }
-export interface User { id: string; email: string; role: Role; active: boolean; created_at: string }
+export interface User { id: string; email: string; username: string | null; role: Role; active: boolean; approved: boolean; created_at: string }
+export interface Organisation { id: string; username: string }
 
 /** Fired on any 401 so the app can drop back to the login screen. */
 export const UNAUTHORIZED = "veritas:unauthorized";
@@ -75,18 +77,20 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const api = {
   login: (email: string, password: string) => req<User>("/api/auth/login", json("POST", { email, password })),
   logout: () => req<void>("/api/auth/logout", { method: "POST" }),
-  signup: (email: string, password: string) =>
-    req<{ status: string; email: string }>("/api/auth/signup", json("POST", { email, password })),
+  signup: (email: string, username: string, password: string, account_type: "user" | "organisation") =>
+    req<{ status: string; email: string }>("/api/auth/signup", json("POST", { email, username, password, account_type })),
   verify: (email: string, code: string) => req<User>("/api/auth/verify", json("POST", { email, code })),
   resend: (email: string) => req<{ status: string }>("/api/auth/resend", json("POST", { email })),
   me: () => req<User>("/api/auth/me"),
   users: () => req<User[]>("/api/users"),
-  createUser: (body: { email: string; password: string; role: Role }) => req<User>("/api/users", json("POST", body)),
-  updateUser: (id: string, body: Partial<{ role: Role; active: boolean; password: string }>) =>
+  createUser: (body: { email: string; username: string; password: string; role: Role }) => req<User>("/api/users", json("POST", body)),
+  updateUser: (id: string, body: Partial<{ role: Role; active: boolean; approved: boolean; password: string }>) =>
     req<User>(`/api/users/${id}`, json("PATCH", body)),
-  upload(file: File) {
+  organisations: () => req<Organisation[]>("/api/organisations"),
+  upload(file: File, organisationId?: string) {
     const fd = new FormData();
     fd.append("file", file);
+    if (organisationId) fd.append("organisation_id", organisationId);
     return req<DocumentSummary>("/api/documents", { method: "POST", body: fd });
   },
   list: () => req<DocumentSummary[]>("/api/documents"),

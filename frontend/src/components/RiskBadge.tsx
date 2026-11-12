@@ -45,13 +45,14 @@ export function DocTable({ docs, empty }: { docs: DocumentSummary[]; empty: stri
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted">
-            <tr><th className={th}>File</th><th className={th}>Type</th><th className={th}>Risk</th><th className={th}>Review</th><th className={th}>Uploaded</th></tr>
+            <tr><th className={th}>File</th><th className={th}>Type</th><th className={th}>Organisation</th><th className={th}>Risk</th><th className={th}>Review</th><th className={th}>Uploaded</th></tr>
           </thead>
           <tbody>
             {docs.map((d) => (
               <tr key={d.id} className="border-t border-line hover:bg-surface-2">
                 <td className="px-4 py-3"><Link className="font-medium text-fg hover:text-brand" to={`/documents/${d.id}`}>{d.filename}</Link></td>
                 <td className="px-4 py-3 text-xs uppercase text-muted">{d.kind}</td>
+                <td className="px-4 py-3 text-muted">{d.organisation ?? "—"}</td>
                 <td className="px-4 py-3"><RiskBadge doc={d} /></td>
                 <td className="px-4 py-3 text-muted">{d.decision ? <DecisionBadge decision={d.decision} /> : d.needs_review ? "pending" : "—"}</td>
                 <td className="px-4 py-3 text-muted">{new Date(d.created_at).toLocaleString()}</td>

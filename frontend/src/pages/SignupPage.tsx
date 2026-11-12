@@ -18,6 +18,8 @@ export default function SignupPage() {
 }
 
 function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: string) => void; onSent: () => void }) {
+  const [accountType, setAccountType] = useState<"user" | "organisation">("user");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: 
     setBusy(true);
     setError(null);
     try {
-      await api.signup(email, password);
+      await api.signup(email, username, password, accountType);
       onSent();
     } catch (err) {
       setError((err as Error).message);
@@ -42,7 +44,23 @@ function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: 
     <AuthCard title="Create your account" subtitle="We'll email you a 6-digit code to verify your address"
               footer={<>Already registered? <Link to="/login" className="text-brand hover:underline">Sign in</Link></>}>
       <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1 text-sm font-medium" role="group" aria-label="Account type">
+          {(["user", "organisation"] as const).map((t) => (
+            <button key={t} type="button" aria-pressed={accountType === t} onClick={() => setAccountType(t)}
+                    className={`rounded-md px-3 py-1.5 transition-colors ${accountType === t ? "bg-surface text-brand shadow-sm" : "text-muted hover:text-fg"}`}>
+              {t === "user" ? "Individual" : "Organisation"}
+            </button>
+          ))}
+        </div>
         <Field label="Email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <div>
+          <Field label={accountType === "organisation" ? "Organisation name (username)" : "Username"} required autoComplete="username"
+                 pattern="[A-Za-z0-9._\-]{3,32}" minLength={3} maxLength={32} value={username} onChange={(e) => setUsername(e.target.value)} />
+          <p className="mt-1 text-xs text-muted">3-32 characters: letters, numbers, dots, underscores or hyphens.</p>
+          {accountType === "organisation" && (
+            <p className="mt-1 text-xs text-muted">An admin must approve your organisation before it can review documents.</p>
+          )}
+        </div>
         <Field label="Password (min 10 characters)" type="password" required minLength={10} autoComplete="new-password"
                value={password} onChange={(e) => setPassword(e.target.value)} />
         <Field label="Confirm password" type="password" required minLength={10} autoComplete="new-password"
@@ -77,7 +95,7 @@ function VerifyForm({ email, onBack }: { email: string; onBack: () => void }) {
     setError(null);
     try {
       await verify(email, code);
-      nav("/");
+      nav("/dashboard");
     } catch (err) {
       setError((err as Error).message);
     } finally {

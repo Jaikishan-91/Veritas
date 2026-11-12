@@ -21,8 +21,9 @@ def code_of(outbox) -> str:
     return re.search(r"\b(\d{6})\b", outbox[-1][2]).group(1)
 
 
-def signup(c, email="new@example.com", pw=PW):
-    return c.post("/api/auth/signup", json={"email": email, "password": pw})
+def signup(c, email="new@example.com", pw=PW, username=None, account_type="user"):
+    return c.post("/api/auth/signup", json={"email": email, "password": pw, "account_type": account_type,
+                                            "username": username or email.split("@")[0].replace("-", "")[:32] or "anon"})
 
 
 def test_signup_verify_login(app, outbox):

@@ -1,17 +1,19 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth";
 import { Logo } from "../theme";
 
 const FEATURES = [
   { title: "Risk score, not a verdict", body: "Each document gets a 0–1 integrity risk score with a band, so you can prioritise instead of trusting a yes/no label." },
   { title: "See where, not just whether", body: "Suspicious regions are boxed on the page. Error-level and noise heatmaps show inconsistencies you can inspect yourself." },
   { title: "Evidence you can explain", body: "Every point of the score traces back to a finding: hidden text, font mismatches, cloned regions, metadata edits." },
-  { title: "Human review built in", body: "Uncertain cases are routed to reviewers automatically. Their decisions are recorded alongside the evidence." },
+  { title: "Human review built in", body: "Uncertain cases are routed to organisations for review automatically. Their decisions are recorded alongside the evidence." },
 ];
 
 const CHECKS = ["Text tampering & white-box overwrites", "Copy-move cloning", "Splicing (ELA & noise)", "Font & layout mismatches",
   "Metadata & incremental-edit history"];
 
 export default function LandingPage() {
+  const { user } = useAuth();
   return (
     <div>
       <section className="relative overflow-hidden border-b border-line">
@@ -26,8 +28,10 @@ export default function LandingPage() {
             highlighted regions and evidence.
           </p>
           <div className="mt-10 flex justify-center gap-3">
-            <Link to="/signup" className="btn btn-primary px-6 py-2.5">Get started</Link>
-            <Link to="/login" className="btn btn-ghost px-6 py-2.5 border border-line">Sign in</Link>
+            {user ? <Link to="/dashboard" className="btn btn-primary px-6 py-2.5">Go to dashboard</Link> : <>
+              <Link to="/signup" className="btn btn-primary px-6 py-2.5">Get started</Link>
+              <Link to="/login" className="btn btn-ghost px-6 py-2.5 border border-line">Sign in</Link>
+            </>}
           </div>
         </div>
       </section>
@@ -46,7 +50,7 @@ export default function LandingPage() {
           <h2 className="text-xl font-semibold tracking-tight text-fg">How it works</h2>
           <ol className="mt-4 space-y-3 text-sm text-muted">
             {["Create an account and verify your email.", "Upload a document. Analysis takes a few seconds.",
-              "Review the score, highlighted regions and evidence list.", "Flagged cases go to a reviewer for a decision."]
+              "Review the score, highlighted regions and evidence list.", "Flagged cases go to an organisation for a decision."]
               .map((s, i) => (
                 <li key={s} className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-xs text-brand-fg">{i + 1}</span>{s}</li>
               ))}

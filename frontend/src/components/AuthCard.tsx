@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth";
 import { Logo, ThemeToggle } from "../theme";
 
 export function AuthCard({ title, subtitle, children, footer }: {
@@ -33,14 +34,17 @@ export function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { lab
 }
 
 export function PublicHeader() {
+  const { user } = useAuth();
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur">
       <div className="mx-auto max-w-7xl px-4 h-16 flex items-center gap-6">
         <Link to="/"><Logo /></Link>
         <div className="ml-auto flex items-center gap-2 text-sm">
           <ThemeToggle />
-          <Link to="/login" className="btn btn-ghost">Sign in</Link>
-          <Link to="/signup" className="btn btn-primary">Sign up</Link>
+          {user ? <Link to="/dashboard" className="btn btn-primary">Go to dashboard</Link> : <>
+            <Link to="/login" className="btn btn-ghost">Sign in</Link>
+            <Link to="/signup" className="btn btn-primary">Sign up</Link>
+          </>}
         </div>
       </div>
     </header>

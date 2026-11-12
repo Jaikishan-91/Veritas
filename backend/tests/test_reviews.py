@@ -3,9 +3,10 @@ from test_api import admin, app, login, make_user  # noqa: F401
 
 def setup_flagged(admin, app, copy_move_png):
     make_user(admin, "owner@example.com", "user")
-    make_user(admin, "rev@example.com", "reviewer")
+    org = make_user(admin, "rev@example.com", "organisation")
     owner, rev = login(app, "owner@example.com", "user-password-1"), login(app, "rev@example.com", "user-password-1")
-    doc_id = owner.post("/api/documents", files={"file": ("c.png", copy_move_png[0], "image/png")}).json()["id"]
+    doc_id = owner.post("/api/documents", files={"file": ("c.png", copy_move_png[0], "image/png")},
+                        data={"organisation_id": org["id"]}).json()["id"]
     assert owner.get(f"/api/documents/{doc_id}").json()["needs_review"]
     return owner, rev, doc_id
 

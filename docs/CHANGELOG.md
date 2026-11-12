@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-13 — OCR enabled
+Added: PaddleOCR in the backend image (`WITH_OCR=1` in local `.env`), `ocrmodels` volume, cached dependency layer in the backend Dockerfile.
+Fixed: OCR could not run in Docker (missing libGL, oneDNN crash, memory/speed of server models). OCR false positives: short tokens, text inside embedded images (scans, diagrams, logos), and layer comparisons that caught a neighbouring line (ADR-016).
+Verified: `pytest` 55 passed (3 new: short tokens, text inside an embedded image, neighbouring-line tolerance; the first two fail without their fix). In the container: `ocr_text` status ok and coverage 1.0 on clean.pdf, tampered.pdf and a screenshot; models not re-downloaded after `--force-recreate`; mobile models ~8 s/page; code-only rebuild 19 s.
+Not verified: OCR accuracy on scanned documents or non-English text.
+
+## 2026-11-12 — Organisations, usernames
+Added: usernames (sign-up, admin create, login by email or username); organisation sign-up with admin approval (Users page Approve/Revoke); "Submit to organisation" on upload; `GET /api/organisations`; organisation shown on document lists and pages; pending-approval banner.
+Changed: role `reviewer` is now `organisation` and reviews only documents submitted to it (ADR-015). Columns `users.username`, `users.approved`, `documents.organisation_id` added in place at startup (no DB reset). Live DB: backed up first (pg_dump), then migrated; the existing reviewer account (jkorg) became an approved organisation; usernames set: jkuser, jkorg, veritas, admin.
+Verified: `pytest` 52 passed (4 new: approval gate and organisation access, invalid submit targets, username uniqueness and login, legacy-schema upgrade; 5 existing tests moved from reviewer to organisation semantics). `npm run build` OK. Live: backend health OK; username login and sign-up conflicts return 401/409; `/api/organisations` requires a session.
+Not verified: the new sign-up, upload and Users flows in a browser; a successful login on the live stack (no passwords used).
+
+## 2026-11-12 — Landing page for signed-in users
+Changed: `/` is the landing page for everyone and the logo always links there. The signed-in dashboard moved from `/` to `/dashboard` (nav "Home" is now "Dashboard"; login, sign-up and fallback redirects go to `/dashboard`). On the landing page, signed-in users see "Go to dashboard" in place of Sign in / Sign up (header and hero).
+Verified: `npm run build` OK; frontend container rebuilt; `/`, `/dashboard`, `/login` return 200 through nginx.
+Fixed: PDFs stuck on "Loading PDF…". nginx served the pdf.js worker (`.mjs`) as `application/octet-stream`, which browsers refuse for module workers; `nginx.conf` now maps `.mjs` to `text/javascript`. Verified with curl: worker `Content-Type: text/javascript`, missing `.mjs` 404, pages still `text/html`. Browsers that had cached the worker under the old type kept failing (Chrome served it from disk cache without re-requesting), so `workerSrc` now carries `?mime=1`. Fresh headless Chrome 157 via DevTools protocol: pdf.js 6.4.299 with the served worker renders a sample PDF (`OK pages=1`).
+Not verified: click-through in a browser.
+
 ## 2026-11-12 — Score recalibration, redesign with light/dark mode
 Added: light/dark theme toggle (follows the OS by default, choice saved in localStorage, applied before first paint), semantic design tokens from the logo palette (`frontend/src/index.css`), logo in the headers and as favicon, `python -m app.rescore [--all]` to re-run analysis on stored documents.
 Changed: all pages restyled (tokens instead of raw slate/white classes). copy_move drops clusters whose source overlaps its copy or spans more than half the page, and lowers confidence (and keeps one finding) on grid-aligned or repetitive pages. pdf_structure ignores filled paths that paint less than 80% of their bbox (table rules/borders). ELA/noise ("splicing") is capped at 0.2 unless two detectors flag overlapping regions (ADR-014).

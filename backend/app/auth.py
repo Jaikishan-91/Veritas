@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 COOKIE = "veritas_session"
 CSRF_HEADER = "X-Requested-With"
 ROLES = ("user", "reviewer", "admin")
-Role = Literal["user", "reviewer", "admin"]
+Role = Literal["user", "organisation", "admin"]
 
 # --- passwords (stdlib scrypt) ---------------------------------------------------------------
 _N, _R, _P = 2**14, 8, 1
@@ -101,10 +101,25 @@ def require(*roles: str):
     return dep
 
 
+def is_reviewer(user: User) -> bool:
+    """Admins, and organisations an admin has approved (ADR-015)."""
+    return user.role == "admin" or (user.role == "organisation" and user.approved)
+
+
+def require_reviewer(user: User = Depends(current_user)) -> User:
+    if not is_reviewer(user):
+        raise HTTPException(403, "Organisation not approved" if user.role == "organisation" else "Insufficient role")
+    return user
+
+
 def can_see(user: User, doc: Document) -> bool:
-    """Owners see their documents; reviewers/admins also see documents routed for review, including after the
-    review decision (ADR-011, ADR-013)."""
-    return doc.owner_id == user.id or (user.role in ("reviewer", "admin") and (doc.needs_review or bool(doc.reviews)))
+    """Owners see their documents. An approved organisation sees every document submitted to it. Admins see
+    documents routed for review, including after the decision (ADR-011, ADR-013, ADR-015)."""
+    if doc.owner_id == user.id:
+        return True
+    if user.role == "organisation":
+        return user.approved and doc.organisation_id == user.id
+    return user.role == "admin" and (doc.needs_review or bool(doc.reviews))
 
 
 def bootstrap_admin() -> None:
@@ -125,14 +140,23 @@ router = APIRouter(prefix="/api")
 class UserOut(BaseModel):
     id: str
     email: str
+    username: str | None
     role: str
     active: bool
+    approved: bool
     created_at: datetime
 
 
 class LoginIn(BaseModel):
-    email: str = Field(max_length=254)
+    email: str = Field(max_length=254)  # email or username
     password: str = Field(max_length=256)
+
+
+USERNAME = r"^[A-Za-z0-9._-]{3,32}$"
+
+
+def _check_username(v: str) -> str:
+    return v.strip().lower()
 
 
 def _check_email(v: str) -> str:
@@ -144,27 +168,30 @@ def _check_email(v: str) -> str:
 
 class UserCreate(BaseModel):
     email: str = Field(max_length=254)
+    username: str = Field(pattern=USERNAME)
     password: str = Field(min_length=10, max_length=256)
     role: Role = "user"
     _email = field_validator("email")(_check_email)
+    _username = field_validator("username")(_check_username)
 
 
 class UserUpdate(BaseModel):
     role: Role | None = None
     active: bool | None = None
+    approved: bool | None = None
     password: str | None = Field(None, min_length=10, max_length=256)
 
 
 @router.post("/auth/login", response_model=UserOut)
 def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
-    email = body.email.strip().lower()
+    email = body.email.strip().lower()  # an email or a username
     if _throttled(email):
         raise HTTPException(429, "Too many failed attempts; try again later")
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(User.email == email if "@" in email else User.username == email))
     ok = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
     if not (user and ok and user.active):
         _record_fail(email)
-        raise HTTPException(401, "Invalid email or password")
+        raise HTTPException(401, "Invalid email/username or password")
     if not user.email_verified:  # password was correct, so revealing this is safe
         raise HTTPException(403, "email_not_verified")
     _start_session(db, user, response)
@@ -224,8 +251,16 @@ def _issue_otp(db: Session, user: User) -> None:
 
 class SignupIn(BaseModel):
     email: str = Field(max_length=254)
+    username: str = Field(pattern=USERNAME)
     password: str = Field(min_length=10, max_length=256)
+    account_type: Literal["user", "organisation"] = "user"
     _email = field_validator("email")(_check_email)
+    _username = field_validator("username")(_check_username)
+
+
+def _username_taken(db: Session, username: str, except_id: str | None = None) -> bool:
+    u = db.scalar(select(User).where(User.username == username))
+    return u is not None and u.id != except_id
 
 
 class VerifyIn(BaseModel):
@@ -244,10 +279,15 @@ def signup(body: SignupIn, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == body.email))
     if user and user.email_verified:
         raise HTTPException(409, "Email already registered")
+    if _username_taken(db, body.username, user.id if user else None):
+        raise HTTPException(409, "Username already taken")
+    org = body.account_type == "organisation"
     if user is None:
-        user = User(email=body.email, password_hash=hash_password(body.password), role="user")
+        user = User(email=body.email, username=body.username, password_hash=hash_password(body.password),
+                    role=body.account_type, approved=not org)
         db.add(user)
-    else:  # unverified re-sign-up: new password; the emailed code still proves mailbox ownership
+    else:  # unverified re-sign-up: new details; the emailed code still proves mailbox ownership
+        user.username, user.role, user.approved = body.username, body.account_type, not org
         user.password_hash = hash_password(body.password)
     db.commit()
     _issue_otp(db, user)
@@ -295,6 +335,18 @@ def me(user: User = Depends(current_user)):
     return user
 
 
+class OrganisationOut(BaseModel):
+    id: str
+    username: str | None
+
+
+@router.get("/organisations", response_model=list[OrganisationOut])
+def list_organisations(_: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Approved, active organisations a user can submit a document to."""
+    q = select(User).where(User.role == "organisation", User.approved.is_(True), User.active.is_(True))
+    return db.scalars(q.order_by(User.username)).all()
+
+
 @router.get("/users", response_model=list[UserOut])
 def list_users(_: User = Depends(require("admin")), db: Session = Depends(get_db)):
     return db.scalars(select(User).order_by(User.created_at)).all()
@@ -304,7 +356,10 @@ def list_users(_: User = Depends(require("admin")), db: Session = Depends(get_db
 def create_user(body: UserCreate, _: User = Depends(require("admin")), db: Session = Depends(get_db)):
     if db.scalar(select(User).where(User.email == body.email)):
         raise HTTPException(409, "Email already registered")
-    u = User(email=body.email, password_hash=hash_password(body.password), role=body.role, email_verified=True)
+    if _username_taken(db, body.username):
+        raise HTTPException(409, "Username already taken")
+    u = User(email=body.email, username=body.username, password_hash=hash_password(body.password), role=body.role,
+             email_verified=True)  # created by an admin, so an organisation is approved already
     db.add(u)
     db.commit()
     return u
@@ -321,6 +376,8 @@ def update_user(user_id: str, body: UserUpdate, admin: User = Depends(require("a
         u.role = body.role
     if body.active is not None:
         u.active = body.active
+    if body.approved is not None:
+        u.approved = body.approved
     if body.password is not None:
         u.password_hash = hash_password(body.password)
     if body.active is False or body.password is not None:

@@ -18,7 +18,7 @@ export default function HomePage() {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [queue, setQueue] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const reviewer = user?.role === "reviewer" || user?.role === "admin";
+  const reviewer = user?.role === "admin" || (user?.role === "organisation" && user.approved);
 
   useEffect(() => {
     api.list().then(setDocs).catch((e) => setError(e.message));
@@ -32,7 +32,7 @@ export default function HomePage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted">{user?.email}</p>
+          <p className="mt-1 text-sm text-muted">{user?.username ?? user?.email}</p>
         </div>
         <Link to="/analyze" className="btn btn-primary">Analyze a document</Link>
       </div>

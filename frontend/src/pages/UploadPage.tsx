@@ -1,25 +1,31 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DocumentSummary } from "../api";
+import { api, type DocumentSummary, type Organisation } from "../api";
+import { useAuth } from "../auth";
 import { DocTable } from "../components/RiskBadge";
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 
 export default function UploadPage() {
   const nav = useNavigate();
+  const { user } = useAuth();
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [orgs, setOrgs] = useState<Organisation[]>([]);
+  const [orgId, setOrgId] = useState("");
 
-  useEffect(() => { api.list().then(setDocs).catch((e) => setError(e.message)); }, []);
+  useEffect(() => { api.list().then(setDocs).catch((e) => setError(e.message));
+    api.organisations().then((o) => setOrgs(o.filter((x) => x.id !== user?.id))).catch(() => {});  // can't submit to yourself
+  }, [user?.id]);
 
   async function send(file?: File) {
     if (!file) return;
     setBusy(true);
     setError(null);
     try {
-      const d = await api.upload(file);
+      const d = await api.upload(file, orgId || undefined);
       nav(`/documents/${d.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -30,6 +36,12 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-8">
+      <label className="block max-w-sm text-sm font-medium">Submit to organisation
+        <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="input mt-1 block w-full">
+          <option value="">None — just analyse</option>
+          {orgs.map((o) => <option key={o.id} value={o.id}>{o.username}</option>)}
+        </select>
+      </label>
       <label
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}

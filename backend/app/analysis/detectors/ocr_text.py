@@ -16,6 +16,7 @@ from ..types import DetectorOutput, DetectorUnavailable, DocumentContext, Findin
 # engine(rgb) -> list of (x0, y0, x1, y1, text, score) in pixel coords
 OcrEngine = Callable[[np.ndarray], list[tuple[float, float, float, float, str, float]]]
 _engine: OcrEngine | None = None
+MIN_ALNUM = 3
 
 
 def set_engine(engine: OcrEngine | None) -> None:
@@ -28,7 +29,15 @@ def _paddle_engine() -> OcrEngine:
         from paddleocr import PaddleOCR  # type: ignore
     except Exception as e:  # noqa: BLE001
         raise DetectorUnavailable(f"PaddleOCR not installed: {e}") from e
-    ocr = PaddleOCR(lang="en")
+    try:  # 3.x: unwarping/orientation preprocessing would return boxes in a transformed image's coordinates.
+        # oneDNN crashes on paddle 3.3 (ConvertPirAttribute2RuntimeAttribute); mobile models: ~8 s/page on CPU,
+        # the server detector ran out of memory (ADR-016).
+        ocr = PaddleOCR(lang="en", use_doc_orientation_classify=False, use_doc_unwarping=False,
+                        use_textline_orientation=False, enable_mkldnn=False,
+                        text_detection_model_name="PP-OCRv5_mobile_det",
+                        text_recognition_model_name="en_PP-OCRv5_mobile_rec")
+    except (TypeError, ValueError):  # 2.x does not know these options
+        ocr = PaddleOCR(lang="en")
 
     def run(rgb: np.ndarray):
         boxes = []
@@ -64,7 +73,8 @@ class OcrText:
         out = DetectorOutput()
         for pno, rgb in enumerate(ctx.pages):
             h, w = rgb.shape[:2]
-            lines = [l for l in engine(rgb) if l[4].strip() and l[5] >= 0.5]
+            # 1-2 character tokens (icons, symbols, stray marks) have glyph-dependent box heights and unreliable reads
+            lines = [l for l in engine(rgb) if sum(c.isalnum() for c in l[4]) >= MIN_ALNUM and l[5] >= 0.5]
             out.notes[f"page_{pno}_lines"] = len(lines)
             self._height_anomalies(lines, pno, w, h, out)
             if ctx.kind == "pdf":
@@ -96,8 +106,12 @@ class OcrText:
         has_layer = bool(page.get_text("text").strip())
         if not has_layer:
             return  # scanned/flattened PDF: OCR is the only text source
+        images = [pymupdf.Rect(i["bbox"]) & page.rect for i in page.get_image_info()]
         for x0, y0, x1, y1, text, _ in lines:
-            layer = page.get_textbox(pymupdf.Rect(x0 * sx, y0 * sy, x1 * sx, y1 * sy)).strip()
+            box = pymupdf.Rect(x0 * sx, y0 * sy, x1 * sx, y1 * sy)
+            if any(_frac_inside(box, im) > 0.5 for im in images):
+                continue  # text that is part of an embedded image (scan, diagram, logo) has no layer by design
+            layer = page.get_textbox(box).strip()
             norm = lambda s: "".join(s.split()).lower()  # noqa: E731
             if not layer:
                 if len(norm(text)) >= 4:
@@ -106,10 +120,25 @@ class OcrText:
                         f"Visible text '{text[:40]}' has no text layer on an otherwise digital page (pasted image/vector text?)",
                         page=pno, bbox=norm_bbox(x0, y0, x1, y1, w, h), evidence={"ocr_text": text[:200]}))
                 continue
-            ratio = difflib.SequenceMatcher(None, norm(text), norm(layer)).ratio()
+            ratio = _covered(norm(text), norm(layer))
             if ratio < 0.5:
                 out.findings.append(Finding(
                     self.name, "text_tampering", 0.6, 0.5,
                     "Displayed text differs from the PDF text layer at the same position",
                     page=pno, bbox=norm_bbox(x0, y0, x1, y1, w, h),
                     evidence={"ocr_text": text[:200], "layer_text": layer[:200], "similarity": round(ratio, 2)}))
+
+
+def _frac_inside(box: pymupdf.Rect, im: pymupdf.Rect) -> float:
+    inter = box & im
+    area = box.width * box.height
+    return (inter.width * inter.height) / area if area > 0 and not inter.is_empty else 0.0
+
+
+def _covered(ocr: str, layer: str) -> float:
+    """Share of the OCR text found, in order, in the layer text. The layer box may also catch a neighbouring
+    line, so extra layer text must not count against it. autojunk would discard common characters in long lines."""
+    if not ocr:
+        return 1.0
+    m = difflib.SequenceMatcher(None, ocr, layer, autojunk=False)
+    return sum(b.size for b in m.get_matching_blocks()) / len(ocr)

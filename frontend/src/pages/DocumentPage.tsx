@@ -18,7 +18,7 @@ export default function DocumentPage() {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(700);
   const { user } = useAuth();
-  const canReview = user?.role === "reviewer" || user?.role === "admin";
+  const canReview = user?.role === "admin" || (user?.role === "organisation" && user.approved);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -55,6 +55,7 @@ export default function DocumentPage() {
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <h1 className="text-lg font-semibold tracking-tight truncate max-w-md" title={doc.filename}>{doc.filename}</h1>
           <RiskBadge doc={doc} />
+          {doc.organisation && <span className="text-muted">Submitted to {doc.organisation}</span>}
           {pages > 1 && (
             <div className="flex items-center gap-1">
               <button className="btn btn-ghost px-2 disabled:opacity-40" disabled={page === 0} onClick={() => setPage(page - 1)}>‹</button>

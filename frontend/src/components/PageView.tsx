@@ -3,7 +3,8 @@ import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { BBox, Finding } from "../api";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// The query busts browser caches that stored this (content-hashed) URL while nginx served it as octet-stream.
+pdfjs.GlobalWorkerOptions.workerSrc = `${workerUrl}?mime=1`;
 
 const CAT_COLOR: Record<string, string> = {
   text_tampering: "#e11d48",
