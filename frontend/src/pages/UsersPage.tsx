@@ -24,46 +24,56 @@ export default function UsersPage() {
     setForm({ email: "", password: "", role: "user" });
   }
 
+  const th = "px-4 py-3 font-medium";
+  const lbl = "text-xs font-medium uppercase tracking-wide text-muted";
+
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Users</h1>
-      {error && <p className="rounded bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-      <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-lg border bg-white p-4 text-sm">
-        <label>Email<input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                           className="mt-1 block rounded border px-2 py-1" /></label>
-        <label>Password (min 10)<input type="password" required minLength={10} autoComplete="new-password" value={form.password}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+        <p className="mt-1 text-sm text-muted">Create accounts and manage roles and access.</p>
+      </div>
+      {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">{error}</p>}
+      <form onSubmit={create} className="card flex flex-wrap items-end gap-3 p-4 text-sm">
+        <label className={lbl}>Email<input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                           className="input mt-1 block normal-case tracking-normal" /></label>
+        <label className={lbl}>Password (min 10)<input type="password" required minLength={10} autoComplete="new-password" value={form.password}
                                        onChange={(e) => setForm({ ...form, password: e.target.value })}
-                                       className="mt-1 block rounded border px-2 py-1" /></label>
-        <label>Role<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
-                           className="mt-1 block rounded border px-2 py-1">{ROLES.map((r) => <option key={r}>{r}</option>)}</select></label>
-        <button className="rounded bg-slate-900 px-3 py-1.5 text-white">Add user</button>
+                                       className="input mt-1 block normal-case tracking-normal" /></label>
+        <label className={lbl}>Role<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+                           className="input mt-1 block normal-case tracking-normal">{ROLES.map((r) => <option key={r}>{r}</option>)}</select></label>
+        <button className="btn btn-primary">Add user</button>
       </form>
-      <table className="w-full text-sm bg-white border rounded-lg overflow-hidden">
-        <thead className="bg-slate-100 text-left text-slate-600">
-          <tr><th className="p-2">Email</th><th className="p-2">Role</th><th className="p-2">Status</th><th className="p-2" /></tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id} className="border-t">
-              <td className="p-2">{u.email}</td>
-              <td className="p-2">
-                <select value={u.role} disabled={u.id === me?.id} className="rounded border px-1"
-                        onChange={(e) => run(api.updateUser(u.id, { role: e.target.value as Role }))}>
-                  {ROLES.map((r) => <option key={r}>{r}</option>)}
-                </select>
-              </td>
-              <td className="p-2">{u.active ? "active" : <span className="text-slate-400">disabled</span>}</td>
-              <td className="p-2 text-right">
-                {u.id !== me?.id && (
-                  <button className="text-blue-700 hover:underline" onClick={() => run(api.updateUser(u.id, { active: !u.active }))}>
-                    {u.active ? "Disable" : "Enable"}
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted">
+              <tr><th className={th}>Email</th><th className={th}>Role</th><th className={th}>Status</th><th className={th} /></tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="border-t border-line hover:bg-surface-2">
+                  <td className="px-4 py-3 font-medium text-fg">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <select value={u.role} disabled={u.id === me?.id} className="input !w-auto !py-1"
+                            onChange={(e) => run(api.updateUser(u.id, { role: e.target.value as Role }))}>
+                      {ROLES.map((r) => <option key={r}>{r}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">{u.active ? <span className="text-emerald-600 dark:text-emerald-400">active</span> : <span className="text-muted">disabled</span>}</td>
+                  <td className="px-4 py-3 text-right">
+                    {u.id !== me?.id && (
+                      <button className="text-sm font-medium text-brand hover:underline" onClick={() => run(api.updateUser(u.id, { active: !u.active }))}>
+                        {u.active ? "Disable" : "Enable"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,8 @@ VERITAS_BOOTSTRAP_ADMIN_EMAIL=admin@example.com VERITAS_BOOTSTRAP_ADMIN_PASSWORD
 .venv/Scripts/python -m pytest -q
 cd ../frontend && npm i && npm run dev             # http://localhost:5173, proxies /api -> :8000
 ```
+After changing detectors or fusion, re-score stored documents: `docker compose exec backend python -m app.rescore` (`--all` also retries failed ones).
+
 Configuration uses `VERITAS_*` environment variables (see `backend/app/config.py`).
 
 ## Detectors (MVP)

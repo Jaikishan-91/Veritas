@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-12 — Score recalibration, redesign with light/dark mode
+Added: light/dark theme toggle (follows the OS by default, choice saved in localStorage, applied before first paint), semantic design tokens from the logo palette (`frontend/src/index.css`), logo in the headers and as favicon, `python -m app.rescore [--all]` to re-run analysis on stored documents.
+Changed: all pages restyled (tokens instead of raw slate/white classes). copy_move drops clusters whose source overlaps its copy or spans more than half the page, and lowers confidence (and keeps one finding) on grid-aligned or repetitive pages. pdf_structure ignores filled paths that paint less than 80% of their bbox (table rules/borders). ELA/noise ("splicing") is capped at 0.2 unless two detectors flag overlapping regions (ADR-014).
+Fixed: clean screenshots, logos, webcam photos and table-heavy PDFs scored high. Stored set of 14 documents re-scored: high-band count 7 to 1. The only remaining high is `tampered.pdf` (0.69, unchanged); `clone.png` is unchanged at 0.48; screenshots 0.61-0.72 to 0.15-0.25; VenturePath 0.81 to 0.34; AdmitCard 0.62 to 0.37 (ilovepdf metadata + ELA).
+Verified: `pytest` 48 passed (4 new: uncorroborated splicing cap, corroborated splicing, layout-repetition copy-move, table borders; the last two fail against the previous detectors). `npm run build` OK. Docker rebuilt; re-score run on all 14 documents; frontend and `/logo.png` return 200.
+Not verified: the redesigned UI in a browser (light and dark); detection on real-world splices, where ELA/noise alone now scores at most 0.2.
+
 ## 2026-10-18 — Review notifications, post-review access, role rename
 Added: owner notifications for review decisions (header bell plus email), a decision banner on the document page, Pending/Reviewed tabs in the review queue, and the `decision` field on summaries.
 Changed: decisions are `accepted`/`rejected`/`inconclusive` (were authentic/tampered/inconclusive). Role `analyst` is renamed `user`. Reviewers and admins keep access to reviewed documents. Existing rows are upgraded in place at startup (no DB reset).

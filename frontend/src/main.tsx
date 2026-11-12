@@ -13,9 +13,10 @@ import ReviewQueuePage from "./pages/ReviewQueuePage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import UsersPage from "./pages/UsersPage";
+import { Logo, ThemeToggle } from "./theme";
 
 const link = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-1.5 rounded-md text-sm ${isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-200"}`;
+  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${isActive ? "bg-brand-soft text-brand" : "text-muted hover:text-fg hover:bg-surface-2"}`;
 
 function PublicApp() {
   return (
@@ -33,29 +34,30 @@ function PublicApp() {
 
 function App() {
   const { user, loading, logout } = useAuth();
-  if (loading) return <p className="p-6 text-slate-500">Loading…</p>;
+  if (loading) return <p className="p-6 text-muted">Loading…</p>;
   if (!user) return <PublicApp />;
   const reviewer = user.role === "reviewer" || user.role === "admin";
   const admin = user.role === "admin";
   return (
     <>
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-6">
-          <span className="font-semibold tracking-tight">Veritas</span>
+      <header className="sticky top-0 z-20 border-b border-line bg-surface/80 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 h-16 flex items-center gap-6">
+          <NavLink to="/"><Logo /></NavLink>
           <nav className="flex gap-1">
             <NavLink to="/" end className={link}>Home</NavLink>
             <NavLink to="/analyze" className={link}>Analyze</NavLink>
             {reviewer && <NavLink to="/reviews" className={link}>Review queue</NavLink>}
             {admin && <NavLink to="/users" className={link}>Users</NavLink>}
           </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm text-slate-600">
+          <div className="ml-auto flex items-center gap-2 text-sm text-muted">
             <NotificationBell />
-            <span className="hidden sm:inline">{user.email} · {user.role}</span>
-            <button onClick={logout} className="rounded border px-2 py-1 hover:bg-slate-100">Sign out</button>
+            <ThemeToggle />
+            <span className="hidden sm:inline px-2">{user.email} · <span className="capitalize">{user.role}</span></span>
+            <button onClick={logout} className="btn-ghost px-3 py-1.5">Sign out</button>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-8">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/analyze" element={<UploadPage />} />

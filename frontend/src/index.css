@@ -1,1 +1,64 @@
 @import "tailwindcss";
+
+/* Class-based dark mode: <html class="dark"> is set before paint by index.html and toggled by theme.tsx. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic tokens derived from the logo (navy #0A1628, sky #1E9BF0, royal #0B4FA8).
+   Use these utilities (bg-surface, text-muted, border-line, bg-brand …) instead of raw slate-* so both themes work. */
+:root {
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --surface-2: #f0f3f8;
+  --line: #e3e8ef;
+  --fg: #0a1628;
+  --muted: #5b6b82;
+  --brand: #0b6fd1;
+  --brand-hover: #0b4fa8;
+  --brand-fg: #ffffff;
+  --brand-soft: #e6f2fd;
+  --ring: #1e9bf0;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #070f1c;
+  --surface: #0d1a2d;
+  --surface-2: #13233a;
+  --line: #1f324d;
+  --fg: #e6edf6;
+  --muted: #8a9bb3;
+  --brand: #1e9bf0;
+  --brand-hover: #4cb3f5;
+  --brand-fg: #04101f;
+  --brand-soft: #0f2a47;
+  --ring: #4cb3f5;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  html { @apply bg-bg text-fg antialiased; }
+  *, ::before, ::after { @apply border-line; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-ring; }
+}
+
+/* Shared primitives so pages stay consistent without a component library. */
+@utility card { @apply rounded-xl border border-line bg-surface shadow-sm shadow-black/[0.03]; }
+@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none; }
+@utility btn-primary { @apply btn bg-brand text-brand-fg hover:bg-brand-hover; }
+@utility btn-ghost { @apply btn border border-line bg-surface text-fg hover:bg-surface-2; }
+@utility input { @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25; }

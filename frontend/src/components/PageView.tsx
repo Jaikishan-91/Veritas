@@ -72,9 +72,10 @@ export function PageView(props: {
 }) {
   const { kind, fileUrl, pdf, page, width, findings, heatmapUrl, heatOpacity, activeId, onSelect } = props;
   return (
-    <div className="relative bg-white shadow border" style={{ width }}>
+    <div className="card p-3 w-fit max-w-full">
+    <div className="relative bg-white shadow-sm ring-1 ring-black/10 overflow-hidden rounded" style={{ width }}>
       {kind === "pdf"
-        ? pdf ? <PdfCanvas pdf={pdf} pageNo={page} width={width} /> : <div className="h-96 grid place-items-center text-slate-400">Loading PDF…</div>
+        ? pdf ? <PdfCanvas pdf={pdf} pageNo={page} width={width} /> : <div className="h-96 grid place-items-center text-muted">Loading PDF…</div>
         : <img src={fileUrl} alt="document" className="block w-full h-auto" />}
       {heatmapUrl && (
         <img src={heatmapUrl} alt="heatmap" className="pointer-events-none absolute inset-0 w-full h-full" style={{ opacity: heatOpacity }} />
@@ -89,6 +90,7 @@ export function PageView(props: {
           )}
         </div>
       ))}
+    </div>
     </div>
   );
 }

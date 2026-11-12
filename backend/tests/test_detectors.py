@@ -127,3 +127,33 @@ def test_styled_document_not_flagged_for_design_fonts(styled_clean_pdf):
     fs = FontConsistency().run(ingest.load(styled_clean_pdf)).findings
     assert fs == [], [f.description for f in fs]
     assert analyze(styled_clean_pdf).fusion.score < 0.3
+
+
+def test_repeated_layout_is_low_confidence_copy_move():
+    """A UI-like grid of identical buttons is layout repetition, not cloning."""
+    import cv2
+    import numpy as np
+    from conftest import to_bytes
+    img = np.full((480, 640, 3), 255, np.uint8)
+    for y in (60, 200, 340):
+        for x in (40, 240, 440):
+            cv2.rectangle(img, (x, y), (x + 160, y + 60), (30, 90, 200), 2)
+            cv2.putText(img, "Submit #42", (x + 12, y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2)
+    fs = CopyMove().run(ingest.load(to_bytes(img, "PNG"))).findings
+    assert len(fs) <= 1 and all(f.confidence <= 0.3 for f in fs)
+
+
+def test_table_borders_are_not_covered_text():
+    """Cell borders drawn as one filled compound path after the text must not count as an opaque cover."""
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((80, 115), "1  Jane Example  10323210210  CSE", fontsize=10)
+    sh = page.new_shape()
+    for y in (100, 120):  # horizontal rules
+        sh.draw_rect(pymupdf.Rect(70, y, 520, y + 0.5))
+    for x in (70, 100, 300, 520):  # vertical rules
+        sh.draw_rect(pymupdf.Rect(x, 100, x + 0.5, 120.5))
+    sh.finish(fill=(0, 0, 0), color=None)
+    sh.commit()
+    assert PdfStructure().run(ingest.load(doc.tobytes())).findings == []
