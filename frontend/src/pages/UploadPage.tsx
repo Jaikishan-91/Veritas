@@ -1,25 +1,31 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DocumentSummary } from "../api";
+import { api, type DocumentSummary, type Organisation } from "../api";
+import { useAuth } from "../auth";
 import { DocTable } from "../components/RiskBadge";
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 
 export default function UploadPage() {
   const nav = useNavigate();
+  const { user } = useAuth();
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [orgs, setOrgs] = useState<Organisation[]>([]);
+  const [orgId, setOrgId] = useState("");
 
-  useEffect(() => { api.list().then(setDocs).catch((e) => setError(e.message)); }, []);
+  useEffect(() => { api.list().then(setDocs).catch((e) => setError(e.message));
+    api.organisations().then((o) => setOrgs(o.filter((x) => x.id !== user?.id))).catch(() => {});  // can't submit to yourself
+  }, [user?.id]);
 
   async function send(file?: File) {
     if (!file) return;
     setBusy(true);
     setError(null);
     try {
-      const d = await api.upload(file);
+      const d = await api.upload(file, orgId || undefined);
       nav(`/documents/${d.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -30,18 +36,29 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-8">
+      <label className="block max-w-sm text-sm font-medium">Submit to organisation
+        <select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="input mt-1 block w-full">
+          <option value="">None — just analyse</option>
+          {orgs.map((o) => <option key={o.id} value={o.id}>{o.username}</option>)}
+        </select>
+      </label>
       <label
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); send(e.dataTransfer.files[0]); }}
-        className={`block cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition
-          ${drag ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-white hover:border-slate-400"}`}
+        className={`block cursor-pointer rounded-2xl border-2 border-dashed px-6 py-16 text-center transition-colors
+          ${drag ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand"}`}
       >
         <input type="file" accept={ACCEPT} className="hidden" disabled={busy} onChange={(e) => send(e.target.files?.[0])} />
+        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
+          <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+          </svg>
+        </span>
         <p className="text-lg font-medium">{busy ? "Uploading…" : "Drop a document or click to choose"}</p>
-        <p className="mt-1 text-sm text-slate-500">PDF, PNG or JPG · up to 25 MB</p>
+        <p className="mt-1 text-sm text-muted">PDF, PNG or JPG · up to 25 MB</p>
       </label>
-      {error && <p className="rounded bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">{error}</p>}
       <section>
         <h2 className="mb-3 font-semibold">Your documents</h2>
         <DocTable docs={docs} empty="No documents analysed yet." />

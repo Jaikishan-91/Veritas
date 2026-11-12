@@ -6,6 +6,7 @@ import pymupdf
 from ..types import DetectorOutput, DocumentContext, Finding, norm_bbox
 
 OVERLAY_ANNOTS = {"FreeText", "Stamp", "Square", "Ink", "Redact"}
+MIN_SOLIDITY = 0.8  # share of a filled path's bbox that is actually painted; table rules/borders are far below
 
 
 def _area(r: pymupdf.Rect) -> float:
@@ -16,6 +17,37 @@ def _covers(a: pymupdf.Rect, b: pymupdf.Rect) -> bool:
     """`a` substantially overlaps `b`. Text rects are whole lines, so measure against the smaller rect."""
     inter = _area(a & b)
     return inter > 0 and inter > 0.5 * min(_area(a), _area(b)) and (a & b).height > 0.6 * b.height
+
+
+def _filled_area(d: dict) -> float:
+    """Painted area of a filled drawing: rectangles/quads summed, a single closed polygon by the shoelace formula.
+
+    Open or compound line paths (grid lines, cell borders) count as zero: their bbox spans text they never cover.
+    """
+    clip = pymupdf.Rect(d["rect"])
+    area, pts = 0.0, []
+    for it in d["items"]:
+        if it[0] == "re":
+            area += _area(pymupdf.Rect(it[1]) & clip)
+        elif it[0] == "qu":
+            area += _area(it[1].rect & clip)
+        elif it[0] == "l":
+            pts += [it[1], it[2]] if not pts else [it[2]]
+    if 3 <= len(pts) <= 9 and abs(pts[0] - pts[-1]) < 1:
+        area += abs(sum(a.x * b.y - b.x * a.y for a, b in zip(pts, pts[1:]))) / 2
+    return area
+
+
+def _solidity_lookup(page):
+    """Map a fill-path bbox (as logged by get_bboxlog) to how solid that path is; None if not found."""
+    fills = [(pymupdf.Rect(d["rect"]), _filled_area(d)) for d in page.get_drawings() if d.get("fill") is not None]
+
+    def solidity(r: pymupdf.Rect) -> float | None:
+        for dr, area in fills:
+            if max(abs(dr.x0 - r.x0), abs(dr.y0 - r.y0), abs(dr.x1 - r.x1), abs(dr.y1 - r.y1)) < 1:
+                return min(area / max(_area(dr), 1e-6), 1.0)
+        return None
+    return solidity
 
 
 def _merge(rects: list[pymupdf.Rect]) -> list[pymupdf.Rect]:
@@ -51,6 +83,7 @@ class PdfStructure:
         page_area = w * h
         texts: list[pymupdf.Rect] = []
         covers: list[dict] = []  # {"rect", "hidden": [Rect], "overwritten": bool}
+        solidity = None
         for kind, bbox in page.get_bboxlog():
             r = pymupdf.Rect(bbox)
             if _area(r) <= 0:
@@ -62,6 +95,11 @@ class PdfStructure:
                 texts.append(r)
             elif kind in ("fill-path", "fill-image", "fill-shade") and _area(r) < 0.5 * page_area:
                 hidden = [t for t in texts if _covers(r, t)]
+                if hidden and kind == "fill-path":
+                    solidity = solidity or _solidity_lookup(page)
+                    sol = solidity(r)
+                    if sol is not None and sol < MIN_SOLIDITY:
+                        continue  # outline/border path: its bbox overlaps text but it paints almost none of it
                 if hidden:
                     covers.append({"rect": r, "hidden": hidden, "overwritten": False})
         for c in covers:

@@ -37,7 +37,7 @@ def admin(app):
 
 
 def make_user(admin, email, role, pw="user-password-1"):
-    r = admin.post("/api/users", json={"email": email, "password": pw, "role": role})
+    r = admin.post("/api/users", json={"email": email, "username": email.split("@")[0].ljust(3, "0"), "password": pw, "role": role})
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -62,7 +62,7 @@ def test_upload_analyze_review_flow(client, tampered_pdf, monkeypatch):
         assert client.get(a["url"]).headers["content-type"] == "image/png"
     assert d["needs_review"]
     assert doc_id in [x["id"] for x in client.get("/api/reviews").json()]
-    rv = client.post(f"/api/documents/{doc_id}/reviews", json={"decision": "tampered", "notes": "amount retyped"})
+    rv = client.post(f"/api/documents/{doc_id}/reviews", json={"decision": "rejected", "notes": "amount retyped"})
     assert rv.status_code == 201 and rv.json()["reviewer"] == ADMIN[0]
     assert doc_id not in [x["id"] for x in client.get("/api/reviews").json()]
 
@@ -87,7 +87,7 @@ def test_corrupt_file_fails_cleanly(client):
 
 def test_invalid_review_and_404(client):
     assert client.get("/api/documents/nope").status_code == 404
-    assert client.post("/api/documents/nope/reviews", json={"decision": "tampered"}).status_code == 404
+    assert client.post("/api/documents/nope/reviews", json={"decision": "rejected"}).status_code == 404
 
 
 # --- authentication / authorization -------------------------------------------------------------
@@ -126,52 +126,53 @@ def test_csrf_header_required_for_writes(admin, app):
     assert no_header.post("/api/documents", files={"file": ("a.png", b"x", "image/png")}).status_code == 403
 
 
-def test_analyst_isolation_and_roles(admin, app, copy_move_png):
-    make_user(admin, "a1@example.com", "analyst")
-    make_user(admin, "a2@example.com", "analyst")
-    make_user(admin, "rev@example.com", "reviewer")
+def test_user_isolation_and_roles(admin, app, copy_move_png):
+    make_user(admin, "a1@example.com", "user")
+    make_user(admin, "a2@example.com", "user")
+    org = make_user(admin, "rev@example.com", "organisation")
     a1, a2 = login(app, "a1@example.com", "user-password-1"), login(app, "a2@example.com", "user-password-1")
     rev = login(app, "rev@example.com", "user-password-1")
 
-    doc_id = a1.post("/api/documents", files={"file": ("c.png", copy_move_png[0], "image/png")}).json()["id"]
+    doc_id = a1.post("/api/documents", files={"file": ("c.png", copy_move_png[0], "image/png")},
+                     data={"organisation_id": org["id"]}).json()["id"]
     d = a1.get(f"/api/documents/{doc_id}").json()
     assert [x["id"] for x in a1.get("/api/documents").json()] == [doc_id]
-    # another analyst cannot see, download or list it
+    # another user cannot see, download or list it
     assert a2.get(f"/api/documents/{doc_id}").status_code == 404
     assert a2.get(f"/api/documents/{doc_id}/file").status_code == 404
     if d["artifacts"]:
         assert a2.get(d["artifacts"][0]["url"]).status_code == 404
     assert a2.get("/api/documents").json() == []
-    # analysts cannot review or manage users
+    # ordinary users cannot review or manage users
     assert a1.get("/api/reviews").status_code == 403
-    assert a1.post(f"/api/documents/{doc_id}/reviews", json={"decision": "tampered"}).status_code == 403
+    assert a1.post(f"/api/documents/{doc_id}/reviews", json={"decision": "rejected"}).status_code == 403
     assert a1.get("/api/users").status_code == 403
-    # reviewers see another user's document only because it was routed for review, and can review it
-    assert d["needs_review"]
+    # the organisation sees another user's document only because it was submitted to it, and can review it
+    assert d["organisation"] == "rev"
     assert rev.get(f"/api/documents/{doc_id}").status_code == 200
     assert rev.get("/api/documents").json() == []  # lists show only your own documents
     assert doc_id in [x["id"] for x in rev.get("/api/reviews").json()]
-    assert rev.post(f"/api/documents/{doc_id}/reviews", json={"decision": "authentic"}).status_code == 201
-    assert rev.post("/api/users", json={"email": "x@y.z", "password": "0123456789"}).status_code == 403
+    assert rev.post(f"/api/documents/{doc_id}/reviews", json={"decision": "accepted"}).status_code == 201
+    assert rev.post("/api/users", json={"email": "x@y.z", "username": "xyz", "password": "0123456789"}).status_code == 403
 
 
 def test_user_management(admin, app):
-    u = make_user(admin, "bob@example.com", "analyst")
-    assert admin.post("/api/users", json={"email": "BOB@example.com", "password": "0123456789"}).status_code == 409
-    assert admin.post("/api/users", json={"email": "short@x.io", "password": "123"}).status_code == 422
+    u = make_user(admin, "bob@example.com", "user")
+    assert admin.post("/api/users", json={"email": "BOB@example.com", "username": "bob2", "password": "0123456789"}).status_code == 409
+    assert admin.post("/api/users", json={"email": "short@x.io", "username": "short", "password": "123"}).status_code == 422
     bob = login(app, "bob@example.com", "user-password-1")
     assert admin.patch(f"/api/users/{u['id']}", json={"active": False}).json()["active"] is False
     assert bob.get("/api/auth/me").status_code == 401  # sessions revoked on deactivation
     assert TestClient(app).post("/api/auth/login", json={"email": "bob@example.com", "password": "user-password-1"}).status_code == 401
     me = admin.get("/api/auth/me").json()
-    assert admin.patch(f"/api/users/{me['id']}", json={"role": "analyst"}).status_code == 400
+    assert admin.patch(f"/api/users/{me['id']}", json={"role": "user"}).status_code == 400
 
 
-def test_unflagged_documents_private_from_reviewers_and_admins(admin, app, clean_pdf, monkeypatch):
+def test_unsubmitted_unflagged_documents_private_from_organisations_and_admins(admin, app, clean_pdf, monkeypatch):
     from app import config
     monkeypatch.setattr(config.get_settings(), "min_coverage", 0.0)  # clean doc -> not routed to review
-    make_user(admin, "a1@example.com", "analyst")
-    make_user(admin, "rev@example.com", "reviewer")
+    make_user(admin, "a1@example.com", "user")
+    make_user(admin, "rev@example.com", "organisation")
     a1, rev = login(app, "a1@example.com", "user-password-1"), login(app, "rev@example.com", "user-password-1")
     doc_id = a1.post("/api/documents", files={"file": ("c.pdf", clean_pdf, "application/pdf")}).json()["id"]
     assert a1.get(f"/api/documents/{doc_id}").json()["needs_review"] is False

@@ -33,3 +33,21 @@ def test_repeated_hits_from_one_detector_decay():
     five = fuse([f("font", "font_mismatch", 0.45, 0.55) for _ in range(5)], 1.0, 0).score
     assert five < 2 * one  # corroboration, not linear accumulation
     assert five < 0.35  # design-level noise alone must not reach the high band
+
+
+def _at(det, bbox, sev=1.0, conf=0.5):
+    x = Finding(det, "splicing", sev, conf, "x", page=0, bbox=bbox)
+    return x
+
+
+def test_uncorroborated_splicing_is_capped():
+    r = fuse([_at("ela", [0.1, 0.1, 0.3, 0.3]) for _ in range(5)], 1.0, 0)
+    assert r.score <= 0.2 and r.band == "low"
+
+
+def test_corroborated_splicing_counts_fully():
+    box = [0.1, 0.1, 0.3, 0.3]
+    alone = fuse([_at("ela", box)], 1.0, 0).score
+    both = fuse([_at("ela", box), _at("noise", [0.12, 0.12, 0.32, 0.32])], 1.0, 0).score
+    apart = fuse([_at("ela", box), _at("noise", [0.6, 0.6, 0.8, 0.8])], 1.0, 0).score
+    assert both > 0.2 >= apart >= alone

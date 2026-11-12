@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      nav("/");
+      nav("/dashboard");
     } catch (err) {
       const msg = (err as Error).message;
       if (msg === "email_not_verified") {
@@ -34,13 +34,13 @@ export default function LoginPage() {
 
   return (
     <AuthCard title="Sign in" subtitle="Welcome back to Veritas"
-              footer={<>No account? <Link to="/signup" className="text-blue-700 hover:underline">Create one</Link></>}>
+              footer={<>No account? <Link to="/signup" className="text-brand hover:underline">Create one</Link></>}>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Email" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Email or username" type="text" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Field label="Password" type="password" required autoComplete="current-password" value={password}
                onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="rounded bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-        <button disabled={busy} className="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-50">
+        {error && <p className="rounded-lg bg-rose-50 p-2.5 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>}
+        <button disabled={busy} className="btn btn-primary w-full py-2 disabled:opacity-50">
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>

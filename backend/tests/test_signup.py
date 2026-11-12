@@ -21,8 +21,9 @@ def code_of(outbox) -> str:
     return re.search(r"\b(\d{6})\b", outbox[-1][2]).group(1)
 
 
-def signup(c, email="new@example.com", pw=PW):
-    return c.post("/api/auth/signup", json={"email": email, "password": pw})
+def signup(c, email="new@example.com", pw=PW, username=None, account_type="user"):
+    return c.post("/api/auth/signup", json={"email": email, "password": pw, "account_type": account_type,
+                                            "username": username or email.split("@")[0].replace("-", "")[:32] or "anon"})
 
 
 def test_signup_verify_login(app, outbox):
@@ -35,7 +36,7 @@ def test_signup_verify_login(app, outbox):
     wrong = f"{(int(code_of(outbox)) + 1) % 10**6:06d}"
     assert c.post("/api/auth/verify", json={"email": "new@example.com", "code": wrong}).status_code == 400
     r = c.post("/api/auth/verify", json={"email": "new@example.com", "code": code_of(outbox)})
-    assert r.status_code == 200 and r.json()["role"] == "analyst"
+    assert r.status_code == 200 and r.json()["role"] == "user"
     assert c.get("/api/auth/me").status_code == 200  # verify logs the user in
     # code is single-use; verified email cannot sign up again
     assert c.post("/api/auth/verify", json={"email": "new@example.com", "code": code_of(outbox)}).status_code == 400

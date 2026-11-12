@@ -43,6 +43,8 @@ services:
       VERITAS_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       VERITAS_SMTP_FROM: ${SMTP_FROM:-}
       VERITAS_SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"  # skip PaddleOCR's slow hoster probe on every start
+    volumes: [ocrmodels:/home/veritas/.paddlex]
     ports: ["8000:8000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -63,3 +65,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  ocrmodels:

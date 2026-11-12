@@ -18,6 +18,8 @@ export default function SignupPage() {
 }
 
 function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: string) => void; onSent: () => void }) {
+  const [accountType, setAccountType] = useState<"user" | "organisation">("user");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: 
     setBusy(true);
     setError(null);
     try {
-      await api.signup(email, password);
+      await api.signup(email, username, password, accountType);
       onSent();
     } catch (err) {
       setError((err as Error).message);
@@ -40,15 +42,31 @@ function SignupForm({ email, setEmail, onSent }: { email: string; setEmail: (v: 
 
   return (
     <AuthCard title="Create your account" subtitle="We'll email you a 6-digit code to verify your address"
-              footer={<>Already registered? <Link to="/login" className="text-blue-700 hover:underline">Sign in</Link></>}>
+              footer={<>Already registered? <Link to="/login" className="text-brand hover:underline">Sign in</Link></>}>
       <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1 text-sm font-medium" role="group" aria-label="Account type">
+          {(["user", "organisation"] as const).map((t) => (
+            <button key={t} type="button" aria-pressed={accountType === t} onClick={() => setAccountType(t)}
+                    className={`rounded-md px-3 py-1.5 transition-colors ${accountType === t ? "bg-surface text-brand shadow-sm" : "text-muted hover:text-fg"}`}>
+              {t === "user" ? "Individual" : "Organisation"}
+            </button>
+          ))}
+        </div>
         <Field label="Email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <div>
+          <Field label={accountType === "organisation" ? "Organisation name (username)" : "Username"} required autoComplete="username"
+                 pattern="[A-Za-z0-9._\-]{3,32}" minLength={3} maxLength={32} value={username} onChange={(e) => setUsername(e.target.value)} />
+          <p className="mt-1 text-xs text-muted">3-32 characters: letters, numbers, dots, underscores or hyphens.</p>
+          {accountType === "organisation" && (
+            <p className="mt-1 text-xs text-muted">An admin must approve your organisation before it can review documents.</p>
+          )}
+        </div>
         <Field label="Password (min 10 characters)" type="password" required minLength={10} autoComplete="new-password"
                value={password} onChange={(e) => setPassword(e.target.value)} />
         <Field label="Confirm password" type="password" required minLength={10} autoComplete="new-password"
                value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-        {error && <p className="rounded bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-        <button disabled={busy} className="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-50">
+        {error && <p className="rounded-lg bg-rose-50 p-2.5 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>}
+        <button disabled={busy} className="btn btn-primary w-full py-2 disabled:opacity-50">
           {busy ? "Sending code…" : "Sign up"}
         </button>
       </form>
@@ -77,7 +95,7 @@ function VerifyForm({ email, onBack }: { email: string; onBack: () => void }) {
     setError(null);
     try {
       await verify(email, code);
-      nav("/");
+      nav("/dashboard");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -94,18 +112,18 @@ function VerifyForm({ email, onBack }: { email: string; onBack: () => void }) {
 
   return (
     <AuthCard title="Check your email" subtitle={`Enter the 6-digit code sent to ${email}`}
-              footer={<button onClick={onBack} className="text-blue-700 hover:underline">Use a different email</button>}>
+              footer={<button onClick={onBack} className="text-brand hover:underline">Use a different email</button>}>
       <form onSubmit={submit} className="space-y-4">
         <input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus
                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-               className="w-full rounded border px-3 py-2 text-center text-2xl tracking-[0.5em] tabular-nums" placeholder="••••••" />
-        {error && <p className="rounded bg-rose-50 p-2 text-sm text-rose-700">{error}</p>}
-        {info && <p className="rounded bg-slate-50 p-2 text-xs text-slate-600">{info}</p>}
-        <button disabled={busy || code.length !== 6} className="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-50">
+               className="input w-full text-center text-2xl tracking-[0.5em] tabular-nums" placeholder="••••••" />
+        {error && <p className="rounded-lg bg-rose-50 p-2.5 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>}
+        {info && <p className="rounded-lg bg-surface-2 p-2.5 text-xs text-muted">{info}</p>}
+        <button disabled={busy || code.length !== 6} className="btn btn-primary w-full py-2 disabled:opacity-50">
           {busy ? "Verifying…" : "Verify and continue"}
         </button>
         <button type="button" onClick={resend} disabled={wait > 0}
-                className="w-full text-sm text-blue-700 hover:underline disabled:text-slate-400 disabled:no-underline">
+                className="w-full text-sm text-brand hover:underline disabled:text-muted disabled:no-underline">
           {wait > 0 ? `Resend code in ${wait}s` : "Resend code"}
         </button>
       </form>

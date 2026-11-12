@@ -93,6 +93,47 @@ def test_ocr_layer_mismatch(clean_pdf):
     assert any(f.evidence.get("layer_text") for f in fs)
 
 
+def test_ocr_ignores_short_tokens():
+    """Icons and symbols read as 1-2 characters must not produce height or layer findings."""
+    from conftest import texture, to_bytes
+    ctx = ingest.load(to_bytes(texture(), "PNG"))
+    row = [(10, 10, 110, 30, "Invoice total", 0.99), (120, 10, 220, 30, "Amount paid", 0.99),
+           (230, 10, 330, 30, "Balance owed", 0.99), (340, 4, 360, 40, "×", 0.99), (370, 20, 380, 26, "1", 0.99)]
+    ocr_text.set_engine(lambda rgb: row)
+    try:
+        assert ocr_text.OcrText().run(ctx).findings == []
+        ocr_text.set_engine(lambda rgb: row + [(390, 4, 490, 44, "Due date", 0.99)])
+        assert len(ocr_text.OcrText().run(ctx).findings) == 1  # a real word at 2x height is still reported
+    finally:
+        ocr_text.set_engine(None)
+
+
+def test_ocr_text_inside_embedded_image_is_not_missing_layer(clean_pdf):
+    """Words OCR reads inside an embedded image (diagram, scan, logo) are image content, not pasted text."""
+    import pymupdf
+    from conftest import texture, to_bytes
+    doc = pymupdf.open(stream=clean_pdf)
+    doc[0].insert_image(pymupdf.Rect(300, 400, 500, 500), stream=to_bytes(texture(100, 200), "PNG"))
+    ctx = ingest.load(doc.tobytes())
+    h, w = ctx.pages[0].shape[:2]
+    s = w / 595
+    inside, outside = (320 * s, 420 * s, 480 * s, 440 * s, "Pipeline stages", 0.99), (60 * s, 700 * s, 200 * s, 715 * s, "Pasted words", 0.99)
+    ocr_text.set_engine(lambda rgb: [inside, outside])
+    try:
+        fs = ocr_text.OcrText().run(ctx).findings
+        assert [f.evidence["ocr_text"] for f in fs] == ["Pasted words"]
+    finally:
+        ocr_text.set_engine(None)
+
+
+def test_ocr_layer_match_tolerates_neighbouring_line():
+    from app.analysis.detectors.ocr_text import _covered
+    line = "discarded,andafailedreanalysiskeepstheearlierscore.hiringmanagersneverseescores."
+    layer = "background,soapplyingneverfailsbecausethemodelisdown.areplythatisnotaninteger" + line
+    assert _covered(line, layer) > 0.95
+    assert _covered("9,999.99", "1,250.00") < 0.5
+
+
 def test_pipeline_scores(clean_pdf, tampered_pdf):
     clean, bad = analyze(clean_pdf), analyze(tampered_pdf)
     assert 0 <= clean.fusion.score < 0.3
@@ -127,3 +168,33 @@ def test_styled_document_not_flagged_for_design_fonts(styled_clean_pdf):
     fs = FontConsistency().run(ingest.load(styled_clean_pdf)).findings
     assert fs == [], [f.description for f in fs]
     assert analyze(styled_clean_pdf).fusion.score < 0.3
+
+
+def test_repeated_layout_is_low_confidence_copy_move():
+    """A UI-like grid of identical buttons is layout repetition, not cloning."""
+    import cv2
+    import numpy as np
+    from conftest import to_bytes
+    img = np.full((480, 640, 3), 255, np.uint8)
+    for y in (60, 200, 340):
+        for x in (40, 240, 440):
+            cv2.rectangle(img, (x, y), (x + 160, y + 60), (30, 90, 200), 2)
+            cv2.putText(img, "Submit #42", (x + 12, y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2)
+    fs = CopyMove().run(ingest.load(to_bytes(img, "PNG"))).findings
+    assert len(fs) <= 1 and all(f.confidence <= 0.3 for f in fs)
+
+
+def test_table_borders_are_not_covered_text():
+    """Cell borders drawn as one filled compound path after the text must not count as an opaque cover."""
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((80, 115), "1  Jane Example  10323210210  CSE", fontsize=10)
+    sh = page.new_shape()
+    for y in (100, 120):  # horizontal rules
+        sh.draw_rect(pymupdf.Rect(70, y, 520, y + 0.5))
+    for x in (70, 100, 300, 520):  # vertical rules
+        sh.draw_rect(pymupdf.Rect(x, 100, x + 0.5, 120.5))
+    sh.finish(fill=(0, 0, 0), color=None)
+    sh.commit()
+    assert PdfStructure().run(ingest.load(doc.tobytes())).findings == []
